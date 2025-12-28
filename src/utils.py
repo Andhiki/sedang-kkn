@@ -17,7 +17,7 @@ def generate_random_points(lat: float, long: float, radius_m: int) -> tuple[str,
     new_lat = lat + delta_lat_deg
     new_long = long + delta_long_deg
 
-    new_lat = str(new_lat)[:7]
-    new_long = str(new_long)[:7]
+    new_lat = f"{new_lat:.6f}"
+    new_long = f"{new_long:.6f}"
 
     return (new_lat, new_long)
