@@ -60,6 +60,10 @@ KKN_LOCATION_RADIUS_METERS=50
 ## TODO
 
 - Automation (Docker/Termux/GitHub actions?)
-- More features related to KKN (logbook, etc.)
+- Probably use Textual for a nicer UI
+- More features related to KKN
+  - Add entry to logbook
+  - Automate attendance of those entry
+  - Possibly handle case when we want to backdate (set the date to the current date, post attendance, then revert the date back)
 
 ---
