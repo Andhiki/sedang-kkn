@@ -1,8 +1,9 @@
 import re
 from urllib.parse import parse_qs, urlparse
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
+from lxml.html import fromstring
 
 from datatypes import OAuthResponse, RequestData, RequestHeader, RequestParam
 
@@ -16,7 +17,7 @@ class OAuthClient:
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.session = requests.Session()
+        self.client = httpx.Client()
 
         self.default_headers: RequestHeader = {
             "User-Agent": "Mozilla/5.0 (Linux; Android 12; sdk_gphone64_x86_64 Build/SE1A.220826.008; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36",
@@ -82,15 +83,15 @@ class OAuthClient:
         )
 
         try:
-            response = self.session.get(url, params=params, headers=headers)
-            response.raise_for_status()
+            resp = self.client.get(url, params=params, headers=headers, follow_redirects=True)
+            resp.raise_for_status()
 
-            self.jsessionid = self._extract_jsession(response.headers.get("Set-Cookie", ""))
-            self.lt_token = self._extract_lt_value(response.text)
+            self.jsessionid = self._extract_jsession(resp.headers.get("Set-Cookie", ""))
+            self.lt_token = self._extract_lt_value(resp.text)
 
             return {
                 "success": True,
-                "status_code": response.status_code,
+                "status_code": str(resp.status_code),
                 "jsessionid": self.jsessionid,
                 "lt_token": self.lt_token,
                 "scope": ALL_SCOPE,
@@ -135,15 +136,17 @@ class OAuthClient:
         )
 
         try:
-            resp = self.session.post(url, params=params, data=data, headers=headers, allow_redirects=False)
+            resp = self.client.post(url, params=params, data=data, headers=headers, follow_redirects=True)
 
             if resp.status_code == 302:
                 loc = resp.headers.get("Location", "")
                 self.ticket = self._extract_location_header(loc, "ticket")
 
-                return {"success": True, "status_code": resp.status_code, "ticket": self.ticket, "location": loc}
+                return {"success": True, "status_code": str(resp.status_code), "ticket": self.ticket, "location": loc}
             else:
-                return {"success": False, "status_code": resp.status_code, "error": resp.text}
+                tree = fromstring(resp.text)
+                error = tree.find('.//div[@class="alert alert-danger"]')
+                return {"success": False, "status_code": str(resp.status_code), "error": error.text_content().strip()}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -174,15 +177,15 @@ class OAuthClient:
         )
 
         try:
-            resp = self.session.get(url, params=params, headers=headers, allow_redirects=False)
+            resp = self.client.get(url, params=params, headers=headers, follow_redirects=True)
 
             if resp.status_code == 302:
                 set_cookie = resp.headers.get("Set-Cookie", "")
                 self.session_cookie = self._extract_session_cookie(set_cookie)
 
-                return {"success": True, "status_code": resp.status_code, "session_cookie": self.session_cookie}
+                return {"success": True, "status_code": str(resp.status_code), "session_cookie": self.session_cookie}
             else:
-                return {"success": False, "status_code": resp.status_code, "error": "Failed to get session cookie"}
+                return {"success": False, "status_code": str(resp.status_code), "error": "Failed to get session cookie"}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -218,15 +221,20 @@ class OAuthClient:
         )
 
         try:
-            resp = self.session.post(url, params=params, data=data, headers=headers, allow_redirects=False)
+            resp = self.client.post(url, params=params, data=data, headers=headers, follow_redirects=True)
 
             if resp.status_code == 302:
                 loc = resp.headers.get("Location", "")
                 code = self._extract_location_header(loc, "code")
 
-                return {"success": True, "status_code": resp.status_code, "authorization_code": code, "location": loc}
+                return {
+                    "success": True,
+                    "status_code": str(resp.status_code),
+                    "authorization_code": code,
+                    "location": loc,
+                }
             else:
-                return {"success": False, "status_code": resp.status_code, "error": "Authorization failed"}
+                return {"success": False, "status_code": str(resp.status_code), "error": "Authorization failed"}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -249,7 +257,7 @@ class OAuthClient:
         }
 
         try:
-            resp = self.session.post(url, data=data, headers=headers, allow_redirects=False)
+            resp = self.client.post(url, data=data, headers=headers, follow_redirects=True)
             resp.raise_for_status()
 
             token_data = resp.json()
@@ -257,7 +265,7 @@ class OAuthClient:
 
             return {
                 "success": True,
-                "status_code": resp.status_code,
+                "status_code": str(resp.status_code),
                 "token_data": token_data,
                 "access_token": self.access_token,
             }
