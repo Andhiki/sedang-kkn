@@ -1,9 +1,8 @@
 import re
 from urllib.parse import parse_qs, urlparse
 
-from bs4 import BeautifulSoup
-from lxml.html import fromstring
 import requests
+from selectolax.parser import HTMLParser
 
 from datatypes import OAuthResponse, RequestData, RequestHeader, RequestParam
 
@@ -43,10 +42,10 @@ class OAuthClient:
         return None
 
     def _extract_lt_value(self, html_content: str) -> str | None:
-        soup = BeautifulSoup(html_content, "html.parser")
-        lt_input = soup.find("input", {"name": "lt", "type": "hidden"})
+        tree = HTMLParser(html_content)
+        node = tree.css_first('input[name="lt"][type="hidden"]')
 
-        return lt_input["value"] if (lt_input and lt_input.get("value")) else None
+        return node.attributes.get("value") if node else None
 
     def _extract_location_header(self, location_header: str, field: str) -> str | None:
         try:
@@ -144,9 +143,9 @@ class OAuthClient:
 
                 return {"success": True, "status_code": resp.status_code, "ticket": self.ticket, "location": loc}
             else:
-                tree = fromstring(resp.text)
-                error = tree.find('.//div[@class="alert alert-danger"]')
-                return {"success": False, "status_code": str(resp.status_code), "error": error.text_content().strip()}
+                tree = HTMLParser(resp.text)
+                error = tree.css('div[class="alert alert-danger"]')
+                return {"success": False, "status_code": resp.status_code, "error": error[0].text(strip=True)}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
