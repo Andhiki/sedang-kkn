@@ -4,14 +4,11 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from datatypes import OAuthResponse, RequestData, RequestHeader, RequestParam
+
 OAUTH_BASE_URL = "https://oauth.simaster.ugm.ac.id"
 SSO_BASE_URL = "https://sso.ugm.ac.id"
 ALL_SCOPE = "user.read user.read-write-update userDetail.read alumni.read student pegawai.all.read pegawai.unit.read staff tte notif.create-read ldap parent.read parent.read-write-update mygate.read-write vehicle.read transgama.read"
-
-type RequestParam = dict[str, str]
-type RequestData = dict[str, str]
-type RequestHeader = dict[str, str]
-type OAuthResponse = dict[str, str | bool | None]
 
 
 class OAuthClient:
