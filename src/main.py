@@ -1,7 +1,7 @@
 import getpass
 import os
 
-import requests
+import httpx
 from dotenv import load_dotenv
 
 from oauth import OAuthClient
@@ -42,16 +42,15 @@ def do_checkin(username: str, access_token: str):
 
     params = {"lat": random_lat, "long": random_long}
     full_url = f"{BASE_URL}/checkin/{username}/{qr_value}"
+    client = httpx.Client(timeout=10.0)
 
     try:
-        resp = requests.post(full_url, params=params, headers=header)
+        resp = client.post(full_url, params=params, headers=header, follow_redirects=True)
 
         if resp.status_code == 200:
             print("\nSUCCESS: Check-in successful!")
         else:
             print(f"\nFAILED: Status Code {resp.status_code}")
-
-        print(resp.text)
     except Exception as e:
         print(f"Request Error: {e}")
 
