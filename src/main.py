@@ -62,9 +62,19 @@ def main():
     oauth_client = OAuthClient(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI)
     login_result = oauth_client.complete_oauth_flow(username, password)
 
-    print("Login successful!")
+    if not login_result["success"]:
+        print("ERROR:")
+        print(login_result["error"])
+        return
+
     access_token = login_result["access_token"]
-    do_checkin(username, access_token)
+    print("Login successful!")
+    assert type(access_token) is str
+
+    usernames = os.getenv("USERNAMES", "").split(",")
+    for username in usernames:
+        print(f"Checking in for {username}")
+        do_checkin(username, access_token)
 
 
 if __name__ == "__main__":
