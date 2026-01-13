@@ -426,10 +426,10 @@ class KKN:
             )
 
             try:
-                submit_resp = await self.client.post(action_url, data=form_data, follow_redirects=True)
-                submit_resp.raise_for_status()
+                resp = await self.client.post(action_url, data=form_data, follow_redirects=True)
+                resp.raise_for_status()
 
-                resp_json = submit_resp.json()
+                resp_json = resp.json()
                 if resp_json.get("status") == "success":
                     print(f"Success: {resp_json.get('msg')}")
                     return True
@@ -437,7 +437,7 @@ class KKN:
                     print(f"Failed: {resp_json}")
                     return False
             except ValueError:
-                if submit_resp.status_code == 200:
+                if resp.status_code == 200:
                     print("Success (No JSON response).")
                     return True
 
@@ -451,7 +451,7 @@ class KKN:
             print(f"Unexpected error in create_sub_entry_base: {e}")
             return False
 
-    async def post_logbook_attendance(self, url: str, longitude: str, latitude: str):
+    async def post_logbook_attendance(self, url: str, latitude: str, longitude: str):
         url_parts = [p for p in url.split("/") if p]
 
         if not (page_token := self.client.cookies.get("simasterUGM_cookie", None)):
