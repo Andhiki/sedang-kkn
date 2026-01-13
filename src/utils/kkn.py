@@ -39,7 +39,7 @@ class KKN:
         pool_size = len(self.main_program) + 1
 
         tasks = []
-        tasks.append(self._get_all_logbook_entries(auth_provider, pool_size))
+        tasks.append(self.get_logbook_entries(auth_provider, pool_size=pool_size))
         tasks.append(self._get_assisted_program(p_id))
 
         results = await asyncio.gather(*tasks)
@@ -124,7 +124,9 @@ class KKN:
     #   around 12 seconds to get all the RPP entries.
     # - As a workaround, we log in n amount of times with n being the pool_size to get n different account
     #   cookies and assign them to each program to avoid the lock-unlock chain.
-    async def _get_all_logbook_entries(self, auth_provider: Simaster | None = None, pool_size: int = 6):
+    async def get_logbook_entries(
+        self, auth_provider: Simaster | None = None, programs: list[str] | None = None, pool_size: int = 6
+    ):
         if not self.main_program:
             log.warning("No Programs found")
             return
@@ -139,7 +141,8 @@ class KKN:
         client_cycle = itertools.cycle(active_clients)
 
         tasks = []
-        for p_id in self.main_program.keys():
+        program_list = programs or self.main_program.keys()
+        for p_id in program_list:
             worker = next(client_cycle)
             tasks.append(self.get_logbook_entries_by_id(p_id, worker))
 
