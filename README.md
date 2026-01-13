@@ -67,6 +67,13 @@ KKN_LOCATION_RADIUS_METERS=50
 
 # A comma separated value for multiple usernames
 USERNAMES=a,b,c,d
+
+# SIMASTER credentials (Optional)
+SIMASTER_USERNAME=username
+SIMASTER_PASSWORD=password
+
+# Gemini API Key (Optional)
+GEMINI_API_KEY=
 ```
 
 5. Run `main.py`
@@ -77,8 +84,8 @@ USERNAMES=a,b,c,d
 - Use [rich](https://github.com/textualize/rich) for a nicer UI
 - More features related to KKN
   - [x] Program caching to minimize request to SIMASTER
-  - [ ] Add entry to logbook
-  - [ ] Automate attendance of those entry
-  - [ ] Handle case when we want to backdate (set the date to the current date, post attendance, then revert the date back)
+  - [x] Add entry to logbook
+  - [x] ~Automate~ Handle attendance of those entry
+  - [ ] ~Handle case when we want to backdate (set the date to the current date, post attendance, then revert the date back)~
 
 ---
