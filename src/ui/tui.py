@@ -1,25 +1,22 @@
-import logging
 import random
-from logging import Logger
+from typing import Literal
 
 from rich.console import Console
-from rich.logging import RichHandler
 
 console = Console()
 
+type Level = Literal["SUCCESS", "FAILED", "ERROR", "WARN"]
 
-def setup_logger(level="INFO") -> Logger:
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(console=console, rich_tracebacks=True, markup=True)],
-    )
-
-    return logging.getLogger("kkn_app")
+PREFIX = {
+    "SUCCESS": "[bold green] SUCCESS[/][cyan]:[/] ",
+    "ERROR": "[bold red] ERROR[/][cyan]:[/] ",
+    "WARN": "[bold yellow] WARNING[/][cyan]:[/] ",
+}
 
 
-log = setup_logger("WARN")
+def print_log(message: str, level: Level = "WARN"):
+    prefix = PREFIX[level]
+    console.print(f"{prefix}{message}")
 
 
 def print_title():
@@ -46,7 +43,7 @@ def print_title():
 
     random_quotes = f"\n{random.choice(splash_text):^75}\n"
     console.print(("\n".join(title)))
-    console.print(random_quotes)
+    print(random_quotes)
 
 
 def print_choice():

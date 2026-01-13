@@ -2,13 +2,13 @@ import os
 
 from google import genai
 
-from ui.tui import log
+from ui.tui import print_log
 
 
 def is_generative_ai_available():
     if not os.getenv("GEMINI_API_KEY"):
-        log.warning("\nWarning: GEMINI_API_KEY not found in environment variables.")
-        log.warning("AI features will be disabled. To enable them, please set the key in your .env file.")
+        print_log("GEMINI_API_KEY not found in environment variables.")
+        print_log("AI features will be disabled. To enable them, please set the key in your .env file.")
         return False
 
     return True
@@ -21,7 +21,7 @@ def generate_content(prompt: str) -> str:
         response = client.models.generate_content(model="gemini-3-flash-preview", contents=prompt)
         return (response.text or "").strip()
     except Exception as e:
-        log.error(f"An error occurred during content generation: {e}")
+        print_log(f"An error occurred during content generation: {e}", "ERROR")
         return "Gagal menghasilkan konten dari AI."
 
 

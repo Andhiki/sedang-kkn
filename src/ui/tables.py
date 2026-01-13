@@ -5,7 +5,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from datatypes import AssistedProgram, EntryData, RPPData
-from ui.tui import console, log
+from ui.tui import console, print_log
 
 # fmt: off
 ROUNDED_HOLLOW: Box = Box(
@@ -49,7 +49,7 @@ def _create_nested_table(data: EntryData | AssistedProgram) -> Panel | Table:
 
 def _print_program_table(title: str, data: dict, is_assisted: bool = False):
     if not data:
-        log.warning(f"No data found for {title}")
+        print_log(f"No data found for {title}")
         return
 
     outer_table = Table(box=box.ROUNDED, title=title, expand=True)
@@ -104,7 +104,7 @@ def _generate_unattended_table(data: list, counter: int, is_assisted: bool = Fal
 
 def print_program_title(data: dict[str, RPPData] | None):
     if not data:
-        log.warning("No data found")
+        print_log("No data found")
         return None
 
     table = Table(box=box.ROUNDED)
@@ -120,6 +120,7 @@ def print_program_title(data: dict[str, RPPData] | None):
 
 def print_unattended_program(data: list):
     if not data:
+        print_log("No data found")
         return
 
     main_progs = [x for x in data if x.get("type") == "main"]

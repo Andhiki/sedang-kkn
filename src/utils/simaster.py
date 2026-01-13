@@ -4,7 +4,7 @@ from contextlib import nullcontext
 import httpx
 from cachelib import SimpleCache
 
-from ui.tui import console
+from ui.tui import console, print_log
 
 BASE_URL = "https://simaster.ugm.ac.id"
 HOME_URL = f"{BASE_URL}/beranda"
@@ -59,7 +59,7 @@ class Simaster:
 
         try:
             status_context = (
-                console.status(f"[bold green]Logging in as {self.username}...", spinner="dots")
+                console.status(f"[bold green]Logging in as [bold cyan]{self.username}[/]...", spinner="dots")
                 if verbose
                 else nullcontext()
             )
@@ -77,14 +77,14 @@ class Simaster:
                 return client
             else:
                 if verbose:
-                    console.print("[bold red]Login failed, Please check your username and password.[/]")
+                    print_log("Login failed, Please check your username and password.", "ERROR")
 
                 await client.aclose()
                 return None
 
         except Exception as e:
             if verbose:
-                console.print(f"[bold red]An error occured during login: {e}[/]")
+                print_log(f"An error occured during login: {e}", "ERROR")
 
             await client.aclose()
             return None

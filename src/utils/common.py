@@ -17,7 +17,7 @@ async def load_background(status: str, job: Task):
     if job.done():
         return
 
-    with console.status(status, spinner="dots"):
+    with console.status(status, spinner="dots", spinner_style="cyan"):
         await job
 
 

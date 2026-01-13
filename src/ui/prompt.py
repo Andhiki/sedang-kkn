@@ -11,7 +11,7 @@ from rich.table import Table
 import utils.generative as gen
 from datatypes import LogEntryPayload, RPPData
 from ui.tables import print_program_entries, print_program_sub_entries
-from ui.tui import console, log
+from ui.tui import console, print_log
 from utils.common import generate_random_points
 
 
@@ -30,14 +30,14 @@ def parse_selection(input_str: str) -> list[int]:
             else:
                 selected.add(int(token))
         except ValueError:
-            log.warning(f"Token: '{token}' is not a number or a hyphen")
+            print_log(f"Token: '{token}' is not a number or a hyphen")
             continue
 
     return sorted(list(selected))
 
 
 def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
-    console.print(f"Current entries for {data['title']}")
+    console.print(f"\nCurrent entries for [bold blue]{data['title']}")
     print_program_entries(data)
 
     entry_title = Prompt.ask("Enter the title for the new logbook entry (Kegiatan)")
@@ -57,22 +57,22 @@ def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
             latitude = float(input("Enter new latitude: "))
             longitude = float(input("Enter new longitude: "))
         except ValueError:
-            console.print("[red]ERROR[/]: Invalid input for location. Using defaults...")
+            print_log("Invalid input for location. Using defaults...", "ERROR")
             latitude = float(default_lat)
             longitude = float(default_long)
 
     form_data = Table(box=box.ROUNDED, title="Summary")
-    form_data.add_column(Align.center("Field"))
+    form_data.add_column(Align.center("Field"), style="bold cyan")
     form_data.add_column(Align.center("Content"), overflow="fold")
 
-    form_data.add_row("[cyan]-[bold white] Title", entry_title)
-    form_data.add_row("[cyan]-[bold white] Date", activity_datetime)
+    form_data.add_row("Title", entry_title)
+    form_data.add_row("Date", activity_datetime)
 
     location = Table(box=box.ROUNDED, show_header=False)
     location.add_row("[bold]Latitude", f"[#fab387]{latitude}")
     location.add_row("[bold]Longitude", f"[#fab387]{longitude}")
 
-    form_data.add_row("[cyan]-[bold white] Location", location)
+    form_data.add_row("Location", location)
 
     console.print(form_data)
     confirm = Confirm.ask("Do you want to add this entry?", default=True)
@@ -88,7 +88,7 @@ def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
 
 def get_sub_entry_details_from_user(data: RPPData):
     program_title = data["title"]
-    console.print(f"Current entries for {data['title']}")
+    console.print(f"\nCurrent entries for [bold blue]{data['title']}")
     print_program_entries(data)
 
     length = len(data["entries"])
@@ -98,7 +98,9 @@ def get_sub_entry_details_from_user(data: RPPData):
             choices=[str(i + 1) for i in range(length)],
         )
     )
+
     sub_entry = data["entries"][choice - 1]
+    console.print(f"\nCurrent sub-entries for [bold blue]{sub_entry['title']}")
     print_program_sub_entries(sub_entry)
 
     sub_entry_title = Prompt.ask("Enter the title for the new logbook sub-entry (Kegiatan)")
@@ -172,19 +174,19 @@ def get_sub_entry_details_from_user(data: RPPData):
         result = input("Enter Hasil Kegiatan: ")
 
     form_data = Table(box=box.ROUNDED, title="Summary")
-    form_data.add_column(Align.center("Field"))
+    form_data.add_column(Align.center("Field"), style="bold cyan")
     form_data.add_column(Align.center("Content"), overflow="fold")
 
-    form_data.add_row("[cyan]-[bold white] Title", sub_entry_title)
-    form_data.add_row("[cyan]-[bold white] Date", activity_datetime)
-    form_data.add_row("[cyan]-[bold white] Duration", f"{duration} minutes")
-    form_data.add_row("[cyan]-[bold white] Target", target)
-    form_data.add_row("[cyan]-[bold white] Audience", f"{audience} people")
-    form_data.add_row("[cyan]-[bold white] JOK", f"Rp. {jok}")
-    form_data.add_row("[cyan]-[bold white] Description", description)
-    form_data.add_row("[cyan]-[bold white] Budget source", "UGM")
-    form_data.add_row("[cyan]-[bold white] Budget", budget)
-    form_data.add_row("[cyan]-[bold white] Result", result)
+    form_data.add_row("Title", sub_entry_title)
+    form_data.add_row("Date", activity_datetime)
+    form_data.add_row("Duration", f"{duration} minutes")
+    form_data.add_row("Target", target)
+    form_data.add_row("Audience", f"{audience} people")
+    form_data.add_row("JOK", f"Rp. {jok}")
+    form_data.add_row("Description", description)
+    form_data.add_row("Budget source", "UGM")
+    form_data.add_row("Budget", budget)
+    form_data.add_row("Result", result)
 
     console.print(form_data)
     confirm = Confirm.ask("Do you want to add this entry?", default=True)

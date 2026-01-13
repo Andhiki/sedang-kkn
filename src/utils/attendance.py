@@ -8,7 +8,7 @@ import requests
 from rich.prompt import Confirm
 
 from datatypes import RequestHeader
-from ui.tui import console, log
+from ui.tui import console, print_log
 from utils.common import generate_random_points
 from utils.oauth import OAuthClient
 
@@ -33,8 +33,8 @@ def checkin(username: str, access_token: str):
             radius = int(os.getenv("KKN_LOCATION_RADIUS_METERS", "0"))
             qr_value = int(os.getenv("QR_CODE_VALUE", "0"))
         except (TypeError, ValueError):
-            console.print(
-                "\n[bold red]ERROR[/]: Either one of the following is not set correctly in .env file:"
+            print_log(
+                "Either one of the following is not set correctly in .env file:"
                 "\n[#fab387]1[/][cyan].[/] KKN_LOCATION_LATITUDE[cyan]:[/] [yellow]float[/]"
                 "\n[#fab387]2[/][cyan].[/] KKN_LOCATION_LONGITUDE[cyan]:[/] [yellow]float[/]"
                 "\n[#fab387]3[/][cyan].[/] KKN_LOCATION_RADIUS_METERS[cyan]:[/] [yellow]int[/]"
@@ -52,12 +52,12 @@ def checkin(username: str, access_token: str):
             status.update("[blue]Hitting the endpoint....")
             resp = client.post(full_url, params=params, headers=header)
         except Exception as e:
-            log.error(f"Request Error: {e}")
+            print_log(f"Request Error: {e}", "ERROR")
 
     if resp.status_code == 200:
-        console.print(f"\n[bold green]SUCCESS[/]: Succesfully checked-in as [bold cyan]{username}[/]!")
+        print_log(f"Succesfully checked-in as [bold cyan]{username}[/]!", "SUCCESS")
     else:
-        console.print(f"\n[bold red]FAILED[/]: Status Code {resp.status_code}")
+        print_log(f"Status Code {resp.status_code}", "ERROR")
 
 
 def check_active_session(username: str, access_token: str):
@@ -89,11 +89,11 @@ def handle_checkin(username: str, password: str):
     login_result = oauth_client.complete_oauth_flow(username, password)
 
     if not login_result["success"]:
-        console.print(f"[bold red]ERROR[/]: ({login_result['step']}) {login_result['error']}")
+        print_log(f"({login_result['step']}) {login_result['error']}", "ERROR")
         return
 
     access_token = login_result["access_token"]
-    console.print("Login successful!")
+    print_log("Successfully logged in via [cyan]oauth.ugm.ac.id[/]!")
     assert type(access_token) is str
 
     usernames = os.getenv("USERNAMES", "").split(",")
@@ -113,7 +113,7 @@ def handle_check_status(username: str, password: str):
     login_result = oauth_client.complete_oauth_flow(username, password)
 
     if not login_result["success"]:
-        console.print(f"[bold red]ERROR ({login_result['step']})[/]: {login_result['error']}")
+        print_log(f"({login_result['step']})[/]: {login_result['error']}", "ERROR")
         return
 
     access_token = login_result["access_token"]

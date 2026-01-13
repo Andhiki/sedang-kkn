@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import json
 import re
 from asyncio.tasks import Task
 
@@ -8,7 +9,7 @@ import requests
 from selectolax.parser import HTMLParser
 
 from datatypes import AssistedProgram, EntryData, LogEntryPayload, RPPData, SubEntryData
-from ui.tui import console, log
+from ui.tui import print_log
 from utils.simaster import BASE_URL, Simaster
 
 KKN_MAIN_URL = f"{BASE_URL}/kkn/kkn"
@@ -27,6 +28,7 @@ MAIN_SUB_ENTRY_PATTERN = re.compile(
 ASSISTED_SUB_ENTRY_PATTERN = re.compile(r"^(?P<title>.*?)\s+\((?P<datetime>.*?WIB)\)")
 
 
+# TODO: refactor one day...
 class KKN:
     def __init__(self, client: httpx.AsyncClient, simaster_acc: Simaster):
         self.client: httpx.AsyncClient = client
@@ -51,7 +53,7 @@ class KKN:
             resp.raise_for_status()
 
             if not (match := LOGBOOK_LINK_PATTERN.search(resp.text)):
-                log.warning("Couldn't find 'Pelaksanaan Program' link on the KKN main page")
+                print_log("Couldn't find 'Pelaksanaan Program' link on the KKN main page")
                 return None
 
             logbook_url: str = match.group(1)
@@ -62,11 +64,11 @@ class KKN:
             resp.raise_for_status()
 
             if not (cookie := self.client.cookies.get("simasterUGM_cookie", None)):
-                log.warning("Could not find 'simasterUGM_cookie' in the session after visiting the logbook page.")
+                print_log("Could not find 'simasterUGM_cookie' in the session after visiting the logbook page.")
                 return None
 
             if not (match := DATA_URL_PATTERN.search(resp.text)):
-                log.warning("Could not find data URL in logbook page's JavaScript.")
+                print_log("Could not find data URL in logbook page's JavaScript.")
                 return None
 
             data_url = match.group(1)
@@ -103,18 +105,18 @@ class KKN:
                 if action_match := RPP_LINK_PATTERN.search(p.get("action", "")):
                     data[p_id]: RPPData = {"title": title, "action": action_match.group(1)}
                 else:
-                    log.warning(f"Could not find RPP URL for program {p_id}")
+                    print_log(f"Could not find RPP URL for program {p_id}")
 
             return data
 
         except httpx.HTTPStatusError as e:
-            log.warning(f"HTTP error occurred: {e.response.status_code} - {e}")
+            print_log(f"HTTP error occurred: {e.response.status_code} - {e}", "ERROR")
             return None
         except httpx.RequestError as e:
-            log.warning(f"An error occurred when fetching programs: {repr(e)}")
+            print_log(f"An error occurred when fetching programs: {repr(e)}", "ERROR")
             return None
         except Exception as e:
-            log.warning(f"An unexpected error occurred in _get_kkn_program: {e}")
+            print_log(f"An unexpected error occurred in _get_kkn_program: {e}", "ERROR")
             return None
 
     # HACK:
@@ -128,7 +130,7 @@ class KKN:
         self, auth_provider: Simaster | None = None, programs: list[str] | None = None, pool_size: int = 6
     ):
         if not self.main_program:
-            log.warning("No Programs found")
+            print_log("No Programs found")
             return
 
         temp_pool = []
@@ -156,7 +158,7 @@ class KKN:
 
     async def update_logbook_entries(self, program_id: str):
         if not (new_entries := await self.get_logbook_entries_by_id(program_id)):
-            log.error(f"No entries found for {self.main_program[program_id]['title']}")
+            print_log(f"No entries found for {self.main_program[program_id]['title']}", "ERROR")
             return
 
         self.main_program[program_id]["entries"] = new_entries
@@ -240,10 +242,10 @@ class KKN:
             return entries
 
         except httpx.RequestError as e:
-            log.warning(f"An error occurred while fetching logbook entries: {repr(e)}")
+            print_log(f"An error occurred while fetching logbook entries: {repr(e)}")
             return None
         except Exception as e:
-            log.warning(f"An unexpected error occurred in get_logbook_entries_by_id: {e}")
+            print_log(f"An unexpected error occurred in get_logbook_entries_by_id: {e}")
             return None
 
     async def _get_assisted_program(self, program_id: str) -> dict[str, list[AssistedProgram]] | None:
@@ -265,7 +267,7 @@ class KKN:
                     break
 
             if not assisted_panel:
-                console.print("[yellow] WARN[/]: Could not find 'Program Bantu' panel on the RPP page.")
+                print_log("Could not find 'Program Bantu' panel on the RPP page.")
                 return None
 
             rows = assisted_panel.css("div.table-primary table tbody tr")
@@ -310,10 +312,10 @@ class KKN:
 
             return pic_entries
         except httpx.RequestError as e:
-            log.error(f"An error occurred while fetching assisted programs: {repr(e)}")
+            print_log(f"An error occurred while fetching assisted programs: {repr(e)}", "ERROR")
             return None
         except Exception as e:
-            log.error(f"An unexpected error occurred in get_assisted_program: {e}")
+            print_log(f"An unexpected error occurred in get_assisted_program: {e}", "ERROR")
             return None
 
     async def add_logbook_entry(self, program_id: str, data: LogEntryPayload):
@@ -328,7 +330,7 @@ class KKN:
 
             tree = HTMLParser(resp.content)
             if not (add_link_node := tree.css_first("a[title='Tambah']")):
-                console.print("[yellow] WARN[/]: Could not find 'Tambah' link on the RPP page.")
+                print_log("Could not find 'Tambah' link on the RPP page.")
                 return False
 
             add_page_url = add_link_node.attributes.get("href")
@@ -338,7 +340,7 @@ class KKN:
 
             tree = HTMLParser(resp.content)
             if not (form := tree.css_first("form#form-usulan-program")):
-                log.warning("Could not find the add form on the page.")
+                print_log("Could not find the add form on the page.")
                 return False
 
             action_url = form.attributes.get("action")
@@ -358,19 +360,19 @@ class KKN:
             resp = await self.client.post(action_url, data=form_data, follow_redirects=True)
             resp.raise_for_status()
 
-            resp_data = resp.json()
-            if resp_data.get("status") == "success":
-                console.print(f"[green]SUCCESS[/]: Added logbook entry: {resp_data.get('msg')}")
+            resp_json = resp.json()
+            if resp_json.get("status") == "success":
+                print_log(f"Added logbook entry: {resp_json.get('msg')}", "SUCCESS")
                 return True
             else:
-                console.print(f"[red]ERROR[/]: Failed to add logbook entry: {resp_data.get('msg')}")
+                print_log(f"Failed to add logbook entry: {resp_json.get('msg')}", "ERROR")
                 return False
 
         except requests.exceptions.RequestException as e:
-            log.error(f"Network error occurred: {e}")
+            print_log(f"Network error occurred: {e}", "ERROR")
             return False
         except Exception as e:
-            log.error(f"An unexpected error occurred in add_kkn_logbook_entry: {e}")
+            print_log(f"An unexpected error occurred in add_kkn_logbook_entry: {e}", "ERROR")
             return False
 
     # WARN:
@@ -383,11 +385,11 @@ class KKN:
 
             tree = HTMLParser(resp.content)
             if not (add_link_node := tree.css_first("a[title='Tambah']")):
-                log.error("Couldn't find 'Tambah' link on the Kegiatan page.")
+                print_log("Couldn't find 'Tambah' link on the Kegiatan page.", "ERROR")
                 return False
 
             if not (add_form_url := add_link_node.attributes.get("href")):
-                log.error("Couldn't find form url in the Node")
+                print_log("Couldn't find form url in the Node", "ERROR")
                 return False
 
             resp = await self.client.get(add_form_url, follow_redirects=True)
@@ -395,11 +397,11 @@ class KKN:
 
             tree = HTMLParser(resp.content)
             if not (form := tree.css_first("form")):
-                log.error("Could not find the sub-entry form.")
+                print_log("Could not find the sub-entry form.", "ERROR")
                 return False
 
             if not (action_url := form.attributes.get("action")):
-                log.error("Couldn't find action url in the Node")
+                print_log("Couldn't find action url in the Node", "ERROR")
                 return False
 
             form_data = {}
@@ -425,37 +427,37 @@ class KKN:
                 }
             )
 
-            try:
-                resp = await self.client.post(action_url, data=form_data, follow_redirects=True)
-                resp.raise_for_status()
+            resp = await self.client.post(action_url, data=form_data, follow_redirects=True)
+            resp.raise_for_status()
 
+            try:
                 resp_json = resp.json()
                 if resp_json.get("status") == "success":
-                    print(f"Success: {resp_json.get('msg')}")
+                    print_log(f"Created sub-entry: {resp_json.get('msg')}", "SUCCESS")
                     return True
                 else:
-                    print(f"Failed: {resp_json}")
+                    print_log(f"Server Response[cyan]:[/] {resp_json}", "ERROR")
                     return False
-            except ValueError:
+            except json.JSONDecodeError:
                 if resp.status_code == 200:
-                    print("Success (No JSON response).")
+                    print_log("Created new sub-entry (judging by status code)", "SUCCESS")
                     return True
 
-                print("Failed: Response was not valid JSON.")
+                print_log("Failed to create sub-entry and response was not valid JSON", "ERROR")
                 return False
 
         except httpx.RequestError as e:
-            print(f"Network error creating sub-entry: {repr(e)}")
+            print_log(f"Network error creating sub-entry[cyan]:[/] {repr(e)}", "ERROR")
             return False
         except Exception as e:
-            print(f"Unexpected error in create_sub_entry_base: {e}")
+            print_log(f"Unexpected error in create_sub_entry_base[cyan]:[/] {e}", "ERROR")
             return False
 
     async def post_logbook_attendance(self, url: str, latitude: str, longitude: str):
         url_parts = [p for p in url.split("/") if p]
 
         if not (page_token := self.client.cookies.get("simasterUGM_cookie", None)):
-            log.error("No `cookie` found")
+            print_log("No `cookie` found", "ERROR")
             return
 
         payload = {
@@ -476,22 +478,11 @@ class KKN:
 
             resp_json = resp.json()
             if resp_json.get("status") == "success":
-                print(f"Success: {resp_json.get('msg')}")
+                print_log(resp_json.get("msg"), "SUCCESS")
                 return True
             else:
-                print(f"Failed: {resp_json}")
+                print_log(resp_json.get("msg"), "ERROR")
                 return False
-
-        except ValueError:
-            if resp.status_code == 200:
-                print("Success (No JSON response).")
-                return True
-
-            print("Failed: Response was not valid JSON.")
-            return False
-        except httpx.RequestError as e:
-            print(f"Network error creating sub-entry: {repr(e)}")
-            return False
         except Exception as e:
-            print(f"Unexpected error in create_sub_entry_base: {e}")
+            print_log(f"Unexpected error in post_logbook_attendance[cyan]:[/] {e}", "ERROR")
             return False

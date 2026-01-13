@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from tap import Tap
 
 import actions
-from ui.tui import console, print_choice, print_title
+from ui.tui import console, print_choice, print_log, print_title
 from utils.attendance import handle_check_status, handle_checkin
 from utils.common import async_input
 from utils.kkn import KKN
@@ -57,7 +57,7 @@ async def main_async(username: str, password: str):
         elif choice == "6":
             # await load_background("[blue]Background fetch in progress...[/]", kkn_manager.loader)
             # TODO: handle report generation
-            console.print("[cyan background] TODO [/] Report generation")
+            console.print("[#181825 on cyan] TODO [/] Report generation")
             pass
         elif choice == "7":
             if result := await actions.change_account():
@@ -66,14 +66,14 @@ async def main_async(username: str, password: str):
                 password = simaster_acc.password
         elif choice == "8":
             kkn_manager.loader = asyncio.create_task(kkn_manager._load_all(kkn_manager.simaster_account))
-            console.print("[green]Data refresh started in background...[/]")
+            console.print("[blue]Data refresh started in background...")
         elif choice == "9":
             console.print("[yellow]Exiting...[/]")
             if not kkn_manager.loader.done():
                 kkn_manager.loader.cancel()
             break
         else:
-            console.print("[yellow] [/]Invalid Choice. Please try again")
+            print_log("Invalid Choice. Please try again")
 
         with console.status("Press Enter to return to the main menu...", spinner="dots"):
             input()
