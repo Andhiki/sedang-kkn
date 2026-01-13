@@ -1,13 +1,13 @@
 import asyncio
 import getpass
+import os
 
 import httpx
-from rich import inspect
 
-from ui.prompt import get_entry_details_from_user, get_sub_entry_details_from_user
-from ui.tables import print_assisted_program, print_program_details, print_program_title
+from ui.prompt import get_entry_details_from_user, get_sub_entry_details_from_user, parse_selection
+from ui.tables import print_assisted_program, print_program_details, print_program_title, print_unattended_program
 from ui.tui import console
-from utils.common import async_input, filter_unattended_program, load_background
+from utils.common import async_input, filter_unattended_program, generate_random_points, load_background
 from utils.kkn import KKN
 from utils.simaster import Simaster
 
@@ -56,6 +56,19 @@ async def add_new_sub_entry(kkn: KKN):
 
 
 async def handle_unattended_entries(kkn: KKN):
+    try:
+        default_lat = float(os.getenv("KKN_LOCATION_LATITUDE", ""))
+        default_long = float(os.getenv("KKN_LOCATION_LONGITUDE", ""))
+        radius = int(os.getenv("KKN_LOCATION_RADIUS_METERS", ""))
+    except (TypeError, ValueError):
+        console.print(
+            "\n[bold red]ERROR[/]: Either one of the following is not set correctly in .env file:"
+            "\n[#fab387]1[/][cyan].[/] KKN_LOCATION_LATITUDE[cyan]:[/] [yellow]float[/]"
+            "\n[#fab387]2[/][cyan].[/] KKN_LOCATION_LONGITUDE[cyan]:[/] [yellow]float[/]"
+            "\n[#fab387]3[/][cyan].[/] KKN_LOCATION_RADIUS_METERS[cyan]:[/] [yellow]int[/]"
+        )
+        return
+
     await load_background("[blue]Background fetch in progress...[/]", kkn.loader)
 
     unattended_main = filter_unattended_program(kkn.main_program)
@@ -66,8 +79,25 @@ async def handle_unattended_entries(kkn: KKN):
         console.print("[green]No unattended programs found![/]")
         return
 
-    # TODO: Add logic to actually post attendance here
-    inspect(unattended)
+    print_unattended_program(unattended)
+    indices = await async_input('Enter indices to process (e.g "1 2 3" or "1-4")', parse_selection)
+
+    unattended_len = len(unattended)
+    final_indices = [i for i in indices if i <= unattended_len]
+
+    id_to_update = set()
+    for id in final_indices:
+        item = unattended[id - 1]
+        entry = item.get("sub_entry")
+        console.print(f"Sending attendance for {entry}...")
+
+        latitude, longitude = generate_random_points(default_lat, default_long, radius)
+        if await kkn.post_logbook_attendance(item.get("url"), latitude, longitude):
+            id_to_update.add(item.get("id"))
+
+    kkn.loader = asyncio.create_task(
+        kkn.get_logbook_entries(kkn.simaster_account, list(id_to_update), len(id_to_update) + 1)
+    )
 
 
 async def change_account() -> tuple[Simaster, httpx.AsyncClient, KKN] | None:
