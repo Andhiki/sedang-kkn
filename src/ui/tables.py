@@ -36,7 +36,7 @@ def _create_nested_table(data: EntryData | AssistedProgram) -> Panel | Table:
         status = "Sudah Presensi" if sub.get("is_attended") else sub.get("status", "-")
         color = STATUS_COLORS.get(status, "")
 
-        table.add_row(sub["title"], f"{color}{status}[/]")
+        table.add_row(sub["title"], f"{color}{status}")
 
     if not has_item:
         table.box = None
@@ -58,7 +58,7 @@ def _print_program_table(title: str, data: dict, is_assisted: bool = False):
 
     for i, (key, value) in enumerate(data.items(), 1):
         main_label = key if is_assisted else value["title"]
-        outer_table.add_row(str(i), f"[bold]{main_label}[/]")
+        outer_table.add_row(str(i), f"[bold]{main_label}")
 
         entries_to_process = value if is_assisted else value.get("entries", [])
 
