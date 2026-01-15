@@ -25,134 +25,134 @@ STATUS_COLORS = {"Sudah Presensi": "[green]", "Persetujuan DPL": "[yellow]", "Be
 
 
 def _create_nested_table(data: EntryData | AssistedProgram) -> Panel | Table:
-    table = Table(box=ROUNDED_HOLLOW, expand=True)
+  table = Table(box=ROUNDED_HOLLOW, expand=True)
 
-    table.add_column(Align.center(data["title"]), style="#89b4fa", ratio=5)
-    table.add_column("Status", justify="center", min_width=16)
+  table.add_column(Align.center(data["title"]), style="#89b4fa", ratio=5)
+  table.add_column("Status", justify="center", min_width=16)
 
-    has_item = False
-    for sub in data["sub_entries"]:
-        has_item = True
-        status = "Sudah Presensi" if sub.get("is_attended") else sub.get("status", "-")
-        color = STATUS_COLORS.get(status, "")
+  has_item = False
+  for sub in data["sub_entries"]:
+    has_item = True
+    status = "Sudah Presensi" if sub.get("is_attended") else sub.get("status", "-")
+    color = STATUS_COLORS.get(status, "")
 
-        table.add_row(sub["title"], f"{color}{status}")
+    table.add_row(sub["title"], f"{color}{status}")
 
-    if not has_item:
-        table.box = None
-        table.show_edge = False
-        table.padding = 0
-        return Panel(table)
+  if not has_item:
+    table.box = None
+    table.show_edge = False
+    table.padding = 0
+    return Panel(table)
 
-    return table
+  return table
 
 
 def _print_program_table(title: str, data: dict, is_assisted: bool = False):
-    if not data:
-        print_log(f"No data found for {title}")
-        return
+  if not data:
+    print_log(f"No data found for {title}")
+    return
 
-    outer_table = Table(box=box.ROUNDED, title=title, expand=True)
-    outer_table.add_column("No", justify="center", style="#fab387", width=2)
-    outer_table.add_column(Align.center("PIC" if is_assisted else "Program"), ratio=1)
+  outer_table = Table(box=box.ROUNDED, title=title, expand=True)
+  outer_table.add_column("No", justify="center", style="#fab387", width=2)
+  outer_table.add_column(Align.center("PIC" if is_assisted else "Program"), ratio=1)
 
-    for i, (key, value) in enumerate(data.items(), 1):
-        main_label = key if is_assisted else value["title"]
-        outer_table.add_row(str(i), f"[bold]{main_label}")
+  for i, (key, value) in enumerate(data.items(), 1):
+    main_label = key if is_assisted else value["title"]
+    outer_table.add_row(str(i), f"[bold]{main_label}")
 
-        entries_to_process = value if is_assisted else value.get("entries", [])
+    entries_to_process = value if is_assisted else value.get("entries", [])
 
-        for entry in entries_to_process:
-            inner_table = _create_nested_table(entry)
-            outer_table.add_row("", inner_table)
+    for entry in entries_to_process:
+      inner_table = _create_nested_table(entry)
+      outer_table.add_row("", inner_table)
 
-    console.print(outer_table)
+  console.print(outer_table)
 
 
 def _print_simple_list(data: list):
-    if not data:
-        return
+  if not data:
+    return
 
-    table = Table(box=box.ROUNDED)
-    table.add_column("No", justify="center", style="#fab387", width=2)
-    table.add_column(Align.center("Entries"))
-    table.add_column(Align.center("Date"))
+  table = Table(box=box.ROUNDED)
+  table.add_column("No", justify="center", style="#fab387", width=2)
+  table.add_column(Align.center("Entries"))
+  table.add_column(Align.center("Date"))
 
-    for i, item in enumerate(data, 1):
-        table.add_row(str(i), item.get("title", "N/A"), item.get("date", "N/A"))
+  for i, item in enumerate(data, 1):
+    table.add_row(str(i), item.get("title", "N/A"), item.get("date", "N/A"))
 
-    console.print(table)
+  console.print(table)
 
 
 def _generate_unattended_table(data: list, counter: int, is_assisted: bool = False):
-    if not data:
-        return
+  if not data:
+    return
 
-    table = Table(box=box.SIMPLE, show_edge=False, expand=True)
-    table.add_column("No", justify="center", style="#fab387", width=2)
-    table.add_column(Align.center("PIC" if is_assisted else "Program"), ratio=2)
-    table.add_column(Align.center("Activity Details"), ratio=3)
+  table = Table(box=box.SIMPLE, show_edge=False, expand=True)
+  table.add_column("No", justify="center", style="#fab387", width=2)
+  table.add_column(Align.center("PIC" if is_assisted else "Program"), ratio=2)
+  table.add_column(Align.center("Activity Details"), ratio=3)
 
-    for i, item in enumerate(data, 1):
-        col_name = item.get("pic", "N/A") if is_assisted else item.get("title", "N/A")
-        details = f"Entry: {item.get('entry', 'N/A')}\n[cyan]└──[/] {item.get('sub_entry')}"
-        table.add_row(str(counter), col_name, details)
-        counter += 1
+  for i, item in enumerate(data, 1):
+    col_name = item.get("pic", "N/A") if is_assisted else item.get("title", "N/A")
+    details = f"Entry: {item.get('entry', 'N/A')}\n[cyan]└──[/] {item.get('sub_entry')}"
+    table.add_row(str(counter), col_name, details)
+    counter += 1
 
-    return table, counter
+  return table, counter
 
 
 def print_program_title(data: dict[str, RPPData] | None):
-    if not data:
-        print_log("No data found")
-        return None
+  if not data:
+    print_log("No data found")
+    return None
 
-    table = Table(box=box.ROUNDED)
+  table = Table(box=box.ROUNDED)
 
-    table.add_column("No", justify="center", style="#fab387")
-    table.add_column(Align.center("Title"))
+  table.add_column("No", justify="center", style="#fab387")
+  table.add_column(Align.center("Title"))
 
-    for i, (k, v) in enumerate(data.items(), 1):
-        table.add_row(str(i), v["title"])
+  for i, (k, v) in enumerate(data.items(), 1):
+    table.add_row(str(i), v["title"])
 
-    console.print(table)
+  console.print(table)
 
 
 def print_unattended_program(data: list):
-    if not data:
-        print_log("No data found")
-        return
+  if not data:
+    print_log("No data found")
+    return
 
-    main_progs = [x for x in data if x.get("type") == "main"]
-    assisted_progs = [x for x in data if x.get("type") == "bantu"]
+  main_progs = [x for x in data if x.get("type") == "main"]
+  assisted_progs = [x for x in data if x.get("type") == "bantu"]
 
-    table = Table(box=box.ROUNDED, title="[bold red]Unattended Activities", expand=True)
+  table = Table(box=box.ROUNDED, title="[bold red]Unattended Activities", expand=True)
 
-    counter = 1
-    if main_progs and (res := _generate_unattended_table(main_progs, counter)):
-        table.add_column("Program Utama", justify="center")
-        inner_table, counter = res
-        table.add_row(inner_table)
+  counter = 1
+  if main_progs and (res := _generate_unattended_table(main_progs, counter)):
+    table.add_column("Program Utama", justify="center")
+    inner_table, counter = res
+    table.add_row(inner_table)
 
-    if assisted_progs and (res := _generate_unattended_table(assisted_progs, counter)):
-        table.add_column("Program Bantu", justify="center")
-        inner_table, counter = res
-        table.add_row(inner_table)
+  if assisted_progs and (res := _generate_unattended_table(assisted_progs, counter)):
+    table.add_column("Program Bantu", justify="center")
+    inner_table, counter = res
+    table.add_row(inner_table)
 
-    console.print(table)
+  console.print(table)
 
 
 def print_assisted_program(data: dict[str, list[AssistedProgram]] | None):
-    _print_program_table("Program Bantu", data or {}, is_assisted=True)
+  _print_program_table("Program Bantu", data or {}, is_assisted=True)
 
 
 def print_program_details(data: dict[str, RPPData] | None):
-    _print_program_table("Program Utama", data or {}, is_assisted=False)
+  _print_program_table("Program Utama", data or {}, is_assisted=False)
 
 
 def print_program_entries(data: RPPData):
-    _print_simple_list(data.get("entries", []))
+  _print_simple_list(data.get("entries", []))
 
 
 def print_program_sub_entries(data: EntryData):
-    _print_simple_list(data.get("sub_entries", []))
+  _print_simple_list(data.get("sub_entries", []))

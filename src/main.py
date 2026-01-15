@@ -18,85 +18,85 @@ REDIRECT_URI = "id.ac.ugm.student.vnext.simaster://oauth2"
 
 
 class Parser(Tap):
-    submit: bool = False  # Submit your attendance
-    check: bool = False  # Check whether if you have logged in or not
+  submit: bool = False  # Submit your attendance
+  check: bool = False  # Check whether if you have logged in or not
 
-    def configure(self):
-        self.add_argument("-s", "--submit")
-        self.add_argument("-c", "--check")
+  def configure(self):
+    self.add_argument("-s", "--submit")
+    self.add_argument("-c", "--check")
 
 
 async def main_async(username: str, password: str):
-    simaster_acc = Simaster(username, password)
+  simaster_acc = Simaster(username, password)
 
-    if not (session := await simaster_acc.login(verbose=True)):
-        return
+  if not (session := await simaster_acc.login(verbose=True)):
+    return
 
-    kkn_manager = KKN(session, simaster_acc)
+  kkn_manager = KKN(session, simaster_acc)
 
-    first = True
-    while True:
-        print_title() if not first else print()
-        first = False
+  first = True
+  while True:
+    print_title() if not first else print()
+    first = False
 
-        print_choice()
-        choice = await async_input("Enter your choice [cyan]([#fab387]1[cyan]-[/]9[/])[/]")
-        print()
+    print_choice()
+    choice = await async_input("Enter your choice [cyan]([#fab387]1[cyan]-[/]9[/])[/]")
+    print()
 
-        if choice == "1":
-            handle_checkin(username, password)
-        elif choice == "2":
-            await actions.show_all_program(kkn_manager)
-        elif choice == "3":
-            await actions.add_new_entry(kkn_manager)
-        elif choice == "4":
-            await actions.add_new_sub_entry(kkn_manager)
-        elif choice == "5":
-            await actions.handle_unattended_entries(kkn_manager)
-            pass
-        elif choice == "6":
-            # await load_background("[blue]Background fetch in progress...[/]", kkn_manager.loader)
-            # TODO: handle report generation
-            console.print("[#181825 on cyan] TODO [/] Report generation")
-            pass
-        elif choice == "7":
-            if result := await actions.change_account():
-                simaster_acc, session, kkn_manager = result
-                username = simaster_acc.username
-                password = simaster_acc.password
-        elif choice == "8":
-            kkn_manager.loader = asyncio.create_task(kkn_manager._load_all(kkn_manager.simaster_account))
-            console.print("[blue]Data refresh started in background...")
-        elif choice == "9":
-            console.print("[yellow]Exiting...[/]")
-            if not kkn_manager.loader.done():
-                kkn_manager.loader.cancel()
-            break
-        else:
-            print_log("Invalid Choice. Please try again")
+    if choice == "1":
+      handle_checkin(username, password)
+    elif choice == "2":
+      await actions.show_all_program(kkn_manager)
+    elif choice == "3":
+      await actions.add_new_entry(kkn_manager)
+    elif choice == "4":
+      await actions.add_new_sub_entry(kkn_manager)
+    elif choice == "5":
+      await actions.handle_unattended_entries(kkn_manager)
+      pass
+    elif choice == "6":
+      # await load_background("[blue]Background fetch in progress...[/]", kkn_manager.loader)
+      # TODO: handle report generation
+      console.print("[#181825 on cyan] TODO [/] Report generation")
+      pass
+    elif choice == "7":
+      if result := await actions.change_account():
+        simaster_acc, session, kkn_manager = result
+        username = simaster_acc.username
+        password = simaster_acc.password
+    elif choice == "8":
+      kkn_manager.loader = asyncio.create_task(kkn_manager._load_all(kkn_manager.simaster_account))
+      console.print("[blue]Data refresh started in background...")
+    elif choice == "9":
+      console.print("[yellow]Exiting...[/]")
+      if not kkn_manager.loader.done():
+        kkn_manager.loader.cancel()
+      break
+    else:
+      print_log("Invalid Choice. Please try again")
 
-        with console.status("Press Enter to return to the main menu...", spinner="dots"):
-            input()
+    with console.status("Press Enter to return to the main menu...", spinner="dots"):
+      input()
 
-        # HACK: we need to remove the spinner somehow since it doesn't work with input()...
-        print("\033[A\033[K")
+    # HACK: we need to remove the spinner somehow since it doesn't work with input()...
+    print("\033[A\033[K")
 
 
 def main():
-    args = Parser().parse_args()
+  args = Parser().parse_args()
 
-    print_title()
-    username = os.getenv("SIMASTER_USERNAME") or input("Username: ")
-    password = os.getenv("SIMASTER_PASSWORD") or getpass.getpass()
+  print_title()
+  username = os.getenv("SIMASTER_USERNAME") or input("Username: ")
+  password = os.getenv("SIMASTER_PASSWORD") or getpass.getpass()
 
-    if args.submit:
-        handle_checkin(username, password)
-    elif args.check:
-        handle_check_status(username, password)
-    else:
-        asyncio.run(main_async(username, password))
+  if args.submit:
+    handle_checkin(username, password)
+  elif args.check:
+    handle_check_status(username, password)
+  else:
+    asyncio.run(main_async(username, password))
 
 
 if __name__ == "__main__":
-    load_dotenv()
-    main()
+  load_dotenv()
+  main()
