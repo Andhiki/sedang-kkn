@@ -234,7 +234,7 @@ class KKN:
             attendance_link = presensi_node.attributes.get("ajaxify")
 
           full_text = content_node.text().replace("\n", "").strip()
-          if status_text := status_node.text(strip=True) if status_node else "":
+          if status_text := status_node.text(strip=True) if status_node else "Belum Presensi":
             full_text = full_text.replace(status_text, "").strip()
 
           is_attended = "Sudah Presensi" in status_text
@@ -317,16 +317,24 @@ class KKN:
           content_node = cols[1]
 
           status_node = content_node.css_first("span.label")
+
+          attendance_link = None
+          if presensi_node := content_node.css_first("span.pull-right a[ajaxify]"):
+            attendance_link = presensi_node.attributes.get("ajaxify")
+
           full_text = content_node.text().replace("\n", "").strip()
-          if status_text := status_node.text(strip=True) if status_node else "":
+          if status_text := status_node.text(strip=True) if status_node else "Belum Presensi":
             full_text = full_text.replace(status_text, "").strip()
+
+          is_attended = "Sudah Presensi" in status_text
 
           match = ASSISTED_SUB_ENTRY_PATTERN.search(full_text)
           sub_data: SubEntryData = {
             "title": match.group("title").strip() if match else full_text,
             "date": match.group("datetime").strip() if match else "N/A",
             "status": status_text,
-            "is_attended": "Sudah Presensi" in status_text,
+            "is_attended": is_attended,
+            "attendance_link": attendance_link,
           }
 
           pic_entries[current_pic][-1]["sub_entries"].append(sub_data)
