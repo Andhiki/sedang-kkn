@@ -71,6 +71,7 @@ def _print_program_table(title: str, data: dict, is_assisted: bool = False):
 
 def _print_simple_list(data: list):
   if not data:
+    console.print(Panel(Align.center("Empty")))
     return
 
   table = Table(box=box.ROUNDED)
@@ -130,12 +131,15 @@ def print_unattended_program(data: list):
 
   counter = 1
   if main_progs and (res := _generate_unattended_table(main_progs, counter)):
-    table.add_column("Program Utama", justify="center")
+    table.add_row(Align.center("Program Utama"))
+    table.add_section()
     inner_table, counter = res
     table.add_row(inner_table)
 
-  if assisted_progs and (res := _generate_unattended_table(assisted_progs, counter)):
-    table.add_column("Program Bantu", justify="center")
+  if assisted_progs and (res := _generate_unattended_table(assisted_progs, counter, is_assisted=True)):
+    table.add_section()
+    table.add_row(Align.center("Program Bantu"))
+    table.add_section()
     inner_table, counter = res
     table.add_row(inner_table)
 
