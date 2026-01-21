@@ -1,13 +1,13 @@
 import asyncio
-import getpass
 import os
 
 from dotenv import load_dotenv
+from prompt_toolkit import HTML
 from tap import Tap
 
 import actions
-from ui.tui import console, print_choice, print_log, print_title
 from utils.attendance import handle_check_status, handle_checkin
+from ui.tui import console, print_choice, print_log, print_title, prompt_session
 from utils.common import async_input
 from utils.kkn import KKN
 from utils.simaster import Simaster
@@ -40,7 +40,9 @@ async def main_async(username: str, password: str):
     first = False
 
     print_choice()
-    choice = await async_input("Enter your choice [cyan]([#fab387]1[cyan]-[/]9[/])[/]")
+    choice = await async_input(
+      HTML('Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>9</num>): </delim>')
+    )
     print()
 
     if choice == "1":
@@ -86,8 +88,10 @@ def main():
   args = Parser().parse_args()
 
   print_title()
-  username = os.getenv("SIMASTER_USERNAME") or input("Username: ")
-  password = os.getenv("SIMASTER_PASSWORD") or getpass.getpass()
+  username = os.getenv("SIMASTER_USERNAME") or prompt_session.prompt(HTML('Username<delim fg="#89dceb">:</delim> '))
+  password = os.getenv("SIMASTER_PASSWORD") or prompt_session.prompt(
+    HTML('Password<delim fg="#89dceb">:</delim> '), is_password=True
+  )
 
   if args.submit:
     handle_checkin(username, password)

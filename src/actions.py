@@ -1,8 +1,8 @@
 import asyncio
-import getpass
 import os
 
 import httpx
+from prompt_toolkit import HTML
 
 from ui.prompt import get_entry_details_from_user, get_sub_entry_details_from_user, parse_selection
 from ui.tables import print_assisted_program, print_program_details, print_program_title, print_unattended_program
@@ -51,7 +51,9 @@ async def add_new_entry(kkn: KKN):
   p_ids = list(kkn.main_program.keys())
 
   choice = await async_input(
-    f"Enter your choice [cyan]([#fab387]1[cyan]-[/]{len(p_ids)}[/])[/]",
+    HTML(
+      f'Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(p_ids)}</num>): </delim>'
+    ),
     int,
     choices=[str(i + 1) for i in range(len(p_ids))],
   )
@@ -69,7 +71,7 @@ async def add_new_sub_entry(kkn: KKN):
   p_ids = list(kkn.main_program.keys())
 
   choice = await async_input(
-    f"Enter your choice [cyan]([#fab387]1[cyan]-[/]{len(p_ids)}[/])[/]",
+    f"Enter your choice [#89dceb]([#fab387]1[#89dceb]-[/]{len(p_ids)}[/])[/]",
     int,
     choices=[str(i + 1) for i in range(len(p_ids))],
   )
@@ -106,7 +108,10 @@ async def handle_unattended_entries(kkn: KKN):
 
   print_unattended_program(unattended)
   indices = await async_input(
-    'Enter indices to process [yellow]([white]e.g. [green]"1 2 3" [cyan]or[/] "1-4"[/][/])[/]', parse_selection
+    HTML(
+      'Enter indices to process <delim fg="#89dceb">(<num fg="#a6e3a1">"1 2 3"<dash fg="#89dceb">or</dash>"1-4"</num>): </delim>'
+    ),
+    parse_selection,
   )
 
   unattended_len = len(unattended)
@@ -132,8 +137,8 @@ async def handle_unattended_entries(kkn: KKN):
 
 
 async def change_account() -> tuple[Simaster, httpx.AsyncClient, KKN] | None:
-  new_username = input("Username: ")
-  new_password = getpass.getpass()
+  new_username = await async_input(HTML('Username<delim fg="#89dceb">:</delim> '))
+  new_password = await async_input(HTML('Password<delim fg="#89dceb">:</delim> '), is_password=True)
 
   new_simaster = Simaster(new_username, new_password)
   if new_session := await new_simaster.login(verbose=True):

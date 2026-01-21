@@ -1,9 +1,11 @@
 import random
 from typing import Literal
 
+from prompt_toolkit import PromptSession
 from rich.console import Console
 
 console = Console()
+prompt_session = PromptSession()
 
 type Level = Literal["SUCCESS", "FAILED", "ERROR", "WARN"]
 

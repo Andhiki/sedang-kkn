@@ -4,13 +4,18 @@ import random
 from asyncio import Task
 from typing import Callable
 
-from rich.prompt import Prompt
+from prompt_toolkit.formatted_text import AnyFormattedText
 
-from ui.tui import console
+from ui.tui import console, prompt_session
 
 
-async def async_input(prompt: str = "", func: type | Callable = str, **kwargs):
-  return func(await asyncio.to_thread(Prompt.ask, prompt, **kwargs))  # ty: ignore
+async def async_input(prompt: str | AnyFormattedText = "", func: type | Callable = str, **kwargs):
+  try:
+    return func(await prompt_session.prompt_async(prompt, **kwargs))
+  except (KeyboardInterrupt, asyncio.CancelledError):
+    raise
+  except EOFError:
+    return func("")
 
 
 async def load_background(status: str, job: Task):
