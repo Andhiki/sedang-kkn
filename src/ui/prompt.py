@@ -46,7 +46,7 @@ def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
 
   default_lat = os.getenv("KKN_LOCATION_LATITUDE", "0.0")
   default_long = os.getenv("KKN_LOCATION_LONGITUDE", "0.0")
-  console.print(f"[blue]Generated random point: [yellow]([#fab387]{default_lat}[cyan],[/] {default_long}[/])[/]")
+  console.print(f"[blue]Generated random point: [yellow]([#fab387]{default_lat}[#89dceb],[/] {default_long}[/])[/]")
   use_coord = Confirm.ask("Use default location?", default=True)
 
   latitude = float(default_lat)
@@ -62,7 +62,7 @@ def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
       longitude = float(default_long)
 
   form_data = Table(box=box.ROUNDED, title="Summary")
-  form_data.add_column(Align.center("Field"), style="bold cyan")
+  form_data.add_column(Align.center("Field"), style="bold #89dceb")
   form_data.add_column(Align.center("Content"), overflow="fold")
 
   form_data.add_row("Title", entry_title)
@@ -94,7 +94,7 @@ def get_sub_entry_details_from_user(data: RPPData):
   length = len(data["entries"])
   choice = int(
     Prompt.ask(
-      f"Enter your choice [cyan]([#fab387]1[cyan]-[/]{length}[/])[/]:",
+      f"Enter your choice [#89dceb]([#fab387]1[#89dceb]-[/]{length}[/])[/]:",
       choices=[str(i + 1) for i in range(length)],
     )
   )
@@ -172,7 +172,7 @@ def get_sub_entry_details_from_user(data: RPPData):
     result = input("Enter Hasil Kegiatan: ")
 
   form_data = Table(box=box.ROUNDED, title="Summary")
-  form_data.add_column(Align.center("Field"), style="bold cyan")
+  form_data.add_column(Align.center("Field"), style="bold #89dceb")
   form_data.add_column(Align.center("Content"), overflow="fold")
 
   form_data.add_row("Title", sub_entry_title)

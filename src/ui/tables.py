@@ -95,7 +95,7 @@ def _generate_unattended_table(data: list, counter: int, is_assisted: bool = Fal
 
   for i, item in enumerate(data, 1):
     col_name = item.get("pic", "N/A") if is_assisted else item.get("title", "N/A")
-    details = f"Entry: {item.get('entry', 'N/A')}\n[cyan]└──[/] {item.get('sub_entry')}"
+    details = f"Entry: {item.get('entry', 'N/A')}\n[#89dceb]└──[/] {item.get('sub_entry')}"
     table.add_row(str(counter), col_name, details)
     counter += 1
 
@@ -126,7 +126,7 @@ def print_unattended_program(data: list):
   main_progs = [x for x in data if x.get("type") == "main"]
   assisted_progs = [x for x in data if x.get("type") == "bantu"]
 
-  table = Table(box=box.ROUNDED, title="[bold red]Unattended Activities", expand=True)
+  table = Table(box=box.ROUNDED, title="[bold red]Unattended Activities", show_header=False)
 
   counter = 1
   if main_progs and (res := _generate_unattended_table(main_progs, counter)):

@@ -315,7 +315,6 @@ class KKN:
           pic_entries[pic].append(pic_data)
         elif len(cols) == 2 and not first_col_text and pic_entries:
           content_node = cols[1]
-
           status_node = content_node.css_first("span.label")
 
           attendance_link = None
@@ -465,7 +464,7 @@ class KKN:
           print_log(f"Created sub-entry: {resp_json.get('msg')}", "SUCCESS")
           return True
         else:
-          print_log(f"Server Response[cyan]:[/] {resp_json}", "ERROR")
+          print_log(f"Server Response[#89dceb]:[/] {resp_json}", "ERROR")
           return False
       except json.JSONDecodeError:
         if resp.status_code == 200:
@@ -476,10 +475,10 @@ class KKN:
         return False
 
     except httpx.RequestError as e:
-      print_log(f"Network error creating sub-entry[cyan]:[/] {repr(e)}", "ERROR")
+      print_log(f"Network error creating sub-entry[#89dceb]:[/] {repr(e)}", "ERROR")
       return False
     except Exception as e:
-      print_log(f"Unexpected error in create_sub_entry_base[cyan]:[/] {e}", "ERROR")
+      print_log(f"Unexpected error in create_sub_entry_base[#89dceb]:[/] {e}", "ERROR")
       return False
 
   async def post_logbook_attendance(self, url: str, latitude: str, longitude: str):
@@ -513,5 +512,5 @@ class KKN:
         print_log(resp_json.get("msg"), "ERROR")
         return False
     except Exception as e:
-      print_log(f"Unexpected error in post_logbook_attendance[cyan]:[/] {e}", "ERROR")
+      print_log(f"Unexpected error in post_logbook_attendance[#89dceb]:[/] {e}", "ERROR")
       return False

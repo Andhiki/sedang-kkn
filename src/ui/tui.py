@@ -10,9 +10,9 @@ prompt_session = PromptSession()
 type Level = Literal["SUCCESS", "FAILED", "ERROR", "WARN"]
 
 PREFIX = {
-  "SUCCESS": "[bold green] SUCCESS[/][cyan]:[/] ",
-  "ERROR": "[bold red] ERROR[/][cyan]:[/] ",
-  "WARN": "[bold yellow] WARNING[/][cyan]:[/] ",
+  "SUCCESS": "[bold green] SUCCESS[/][#89dceb]:[/] ",
+  "ERROR": "[bold red] ERROR[/][#89dceb]:[/] ",
+  "WARN": "[bold yellow] WARNING[/][#89dceb]:[/] ",
 }
 
 
@@ -63,7 +63,7 @@ def print_choice():
 
   opt_len = len(str(len(options)))
   for i, opt in enumerate(options, 1):
-    fmt_opt = f"[cyan][[#fab387]{i:0{opt_len}}[/]][/] {opt}"
+    fmt_opt = f"[#89dceb][[#fab387]{i:0{opt_len}}[/]][/] {opt}"
     console.print(fmt_opt)
 
   print()

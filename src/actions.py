@@ -90,9 +90,9 @@ async def handle_unattended_entries(kkn: KKN):
   except (TypeError, ValueError):
     print_log(
       "Either one of the following is not set correctly in .env file:"
-      "\n[#fab387]1[/][cyan].[/] KKN_LOCATION_LATITUDE[cyan]:[/] [yellow]float[/]"
-      "\n[#fab387]2[/][cyan].[/] KKN_LOCATION_LONGITUDE[cyan]:[/] [yellow]float[/]"
-      "\n[#fab387]3[/][cyan].[/] KKN_LOCATION_RADIUS_METERS[cyan]:[/] [yellow]int[/]"
+      "\n[#fab387]1[/][#89dceb].[white] KKN_LOCATION_LATITUDE[/]:[/] [yellow]float[/]"
+      "\n[#fab387]2[/][#89dceb].[white] KKN_LOCATION_LONGITUDE[/]:[/] [yellow]float[/]"
+      "\n[#fab387]3[/][#89dceb].[white] QR_CODE_VALUE[/]:[/] [yellow]int[/]"
     )
     return
 

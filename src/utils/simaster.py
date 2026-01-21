@@ -59,7 +59,7 @@ class Simaster:
 
     try:
       status_context = (
-        console.status(f"[bold green]Logging in as [bold cyan]{self.username}[/]...", spinner="dots")
+        console.status(f"[bold green]Logging in as [bold #89dceb]{self.username}[/]...", spinner="dots")
         if verbose
         else nullcontext()
       )
