@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import TypedDict
 
 type RequestParam = dict[str, str]
@@ -32,6 +33,19 @@ class OAuthResponse(TypedDict, total=False):
 class BasePayload(TypedDict):
   longitude: float
   latitude: float
+
+
+@dataclass
+class _BasePayload:
+  latitude: float
+  longitude: float
+
+
+@dataclass
+class CheckInPayload(_BasePayload):
+  access_token: str
+  radius: int
+  qr_value: int
 
 
 class LogEntryPayload(BasePayload):
