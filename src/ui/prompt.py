@@ -94,7 +94,7 @@ def get_sub_entry_details_from_user(data: RPPData):
   length = len(data["entries"])
   choice = int(
     Prompt.ask(
-      f"Enter your choice [#89dceb]([#fab387]1[#89dceb]-[/]{length}[/])[/]:",
+      f"Enter your choice [#89dceb]([#fab387]1[#89dceb]-[/]{length}[/])[/]",
       choices=[str(i + 1) for i in range(length)],
     )
   )
@@ -161,15 +161,15 @@ def get_sub_entry_details_from_user(data: RPPData):
           print("Regenerating content...")
           continue
         elif choice == "m":
-          description = input("\nEnter Deskripsi Kegiatan: ")
-          result = input("Enter Hasil Kegiatan: ")
+          description = input("\nEnter Acticity Description: ")
+          result = input("Enter Activity Result: ")
           break
         else:
           description, result = generated_desc, generated_result
           break
   else:
-    description = input("\nEnter Deskripsi Kegiatan: ")
-    result = input("Enter Hasil Kegiatan: ")
+    description = input("\nEnter Acticity Description: ")
+    result = input("Enter Activity Result: ")
 
   form_data = Table(box=box.ROUNDED, title="Summary")
   form_data.add_column(Align.center("Field"), style="bold #89dceb")

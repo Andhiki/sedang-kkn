@@ -52,10 +52,10 @@ async def add_new_entry(kkn: KKN):
 
   choice = await async_input(
     HTML(
-      f'Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(p_ids)}</num>): </delim>'
+      f'Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(p_ids)}</num>) '
+      f'<choice fg="ansimagenta">[{"/".join(str(i + 1) for i in range(len(p_ids)))}]</choice>: </delim>'
     ),
     int,
-    choices=[str(i + 1) for i in range(len(p_ids))],
   )
 
   p_id = p_ids[choice - 1]
@@ -71,15 +71,20 @@ async def add_new_sub_entry(kkn: KKN):
   p_ids = list(kkn.main_program.keys())
 
   choice = await async_input(
-    f"Enter your choice [#89dceb]([#fab387]1[#89dceb]-[/]{len(p_ids)}[/])[/]",
+    HTML(
+      f'Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(p_ids)}</num>) '
+      f'<choice fg="ansimagenta">[{"/".join(str(i + 1) for i in range(len(p_ids)))}]</choice>: </delim>'
+    ),
     int,
-    choices=[str(i + 1) for i in range(len(p_ids))],
   )
 
   p_id = p_ids[choice - 1]
-  if result := get_sub_entry_details_from_user(kkn.main_program[p_id]):
-    await kkn.add_logbook_sub_entry(result[0], result[1])
-    kkn.loader = asyncio.create_task(kkn.update_logbook_entries(programs=[p_id], pool_size=2))
+  try:
+    if result := get_sub_entry_details_from_user(kkn.main_program[p_id]):
+      await kkn.add_logbook_sub_entry(result[0], result[1])
+      kkn.loader = asyncio.create_task(kkn.update_logbook_entries(programs=[p_id], pool_size=2))
+  except KeyboardInterrupt:
+    return
 
 
 async def handle_unattended_entries(kkn: KKN):
@@ -109,7 +114,7 @@ async def handle_unattended_entries(kkn: KKN):
   print_unattended_program(unattended)
   indices = await async_input(
     HTML(
-      'Enter indices to process <delim fg="#89dceb">(<num fg="#a6e3a1">"1 2 3"<dash fg="#89dceb">or</dash>"1-4"</num>): </delim>'
+      'Enter indices to process <delim fg="#89dceb">(<num fg="#a6e3a1">"1 2 3"<dash fg="#89dceb"> or </dash>"1-4"</num>): </delim>'
     ),
     parse_selection,
   )

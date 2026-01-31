@@ -11,11 +11,10 @@ from ui.tui import console, prompt_session
 
 async def async_input(prompt: str | AnyFormattedText = "", func: type | Callable = str, **kwargs):
   try:
-    return func(await prompt_session.prompt_async(prompt, **kwargs))
-  except (KeyboardInterrupt, asyncio.CancelledError):
+    result = await prompt_session.prompt_async(prompt, **kwargs)
+    return func(result)
+  except (KeyboardInterrupt, asyncio.CancelledError, EOFError):
     raise
-  except EOFError:
-    return func("")
 
 
 async def load_background(status: str, job: Task):
