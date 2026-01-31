@@ -25,7 +25,7 @@ MAIN_SUB_ENTRY_PATTERN = re.compile(
   r"\((?P<datetime>.*? \d{2}:\d{2}.*?)\)\s+"
   r"\[(?P<duration>.*?)\]"
 )
-ASSISTED_SUB_ENTRY_PATTERN = re.compile(r"^(?P<title>.*?)\s+\((?P<datetime>.*?WIB)\)")
+ASSISTED_SUB_ENTRY_PATTERN = re.compile(r"^(?P<title>.*?)\s+\((?P<datetime>.*?WIB)\)\s+\[(?P<duration>.*?)\]")
 
 
 # TODO: refactor one day...
@@ -331,6 +331,7 @@ class KKN:
           sub_data: SubEntryData = {
             "title": match.group("title").strip() if match else full_text,
             "date": match.group("datetime").strip() if match else "N/A",
+            "duration": match.group("duration").strip() if match else "N/A",
             "status": status_text,
             "is_attended": is_attended,
             "attendance_link": attendance_link,

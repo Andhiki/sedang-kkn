@@ -24,19 +24,25 @@ ROUNDED_HOLLOW: Box = Box(
 STATUS_COLORS = {"Sudah Presensi": "[green]", "Persetujuan DPL": "[yellow]", "Belum Presensi": "[red]"}
 
 
-def _create_nested_table(data: EntryData | AssistedProgram) -> Panel | Table:
+def _create_nested_table(data: EntryData | AssistedProgram, count: list[int] | None = None) -> Panel | Table:
   table = Table(box=ROUNDED_HOLLOW, expand=True)
 
   table.add_column(Align.center(data["title"]), style="#89b4fa", ratio=5)
+  table.add_column("Duration", justify="center", style="#89b4fa", min_width=8)
   table.add_column("Status", justify="center", min_width=16)
 
   has_item = False
   for sub in data["sub_entries"]:
     has_item = True
     status = "Sudah Presensi" if sub.get("is_attended") else sub.get("status", "-")
+    title = sub.get("title")
+    duration = sub.get("duration", "0")
     color = STATUS_COLORS.get(status, "")
 
-    table.add_row(sub["title"], f"{color}{status}")
+    table.add_row(title, duration, f"{color}{status}")
+
+    if count is not None and status == "Sudah Presensi":
+      count.append(int(duration.split()[0]))
 
   if not has_item:
     table.box = None
@@ -56,6 +62,7 @@ def _print_program_table(title: str, data: dict, is_assisted: bool = False):
   outer_table.add_column("No", justify="center", style="#fab387", width=2)
   outer_table.add_column(Align.center("PIC" if is_assisted else "Program"), ratio=1)
 
+  cnt = []
   for i, (key, value) in enumerate(data.items(), 1):
     main_label = key if is_assisted else value["title"]
     outer_table.add_row(str(i), f"[bold]{main_label}")
@@ -63,9 +70,11 @@ def _print_program_table(title: str, data: dict, is_assisted: bool = False):
     entries_to_process = value if is_assisted else value.get("entries", [])
 
     for entry in entries_to_process:
-      inner_table = _create_nested_table(entry)
+      inner_table = _create_nested_table(entry, cnt)
       outer_table.add_row("", inner_table)
 
+  outer_table.add_section()
+  outer_table.add_row("", f"Total: {sum(cnt)}")
   console.print(outer_table)
 
 
