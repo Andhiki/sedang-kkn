@@ -88,6 +88,10 @@ class OAuthClient:
       self.jsessionid = self._extract_jsession(resp.headers.get("Set-Cookie", ""))
       self.lt_token = self._extract_lt_value(resp.text)
 
+      if self.jsessionid:
+        self.session.cookies.set("JSESSIONID", self.jsessionid, domain="sso.ugm.ac.id")
+        self.session.cookies.set("JSESSIONID", self.jsessionid, domain="oauth.simaster.ugm.ac.id")
+
       return {
         "success": True,
         "status_code": resp.status_code,
@@ -184,6 +188,9 @@ class OAuthClient:
       if resp.status_code == 302:
         set_cookie = resp.headers.get("Set-Cookie", "")
         self.session_cookie = self._extract_session_cookie(set_cookie)
+
+        if self.session_cookie:
+          self.session.cookies.set("session", self.session_cookie, domain="oauth.simaster.ugm.ac.id")
 
         return {"success": True, "status_code": resp.status_code, "session_cookie": self.session_cookie}
       else:
