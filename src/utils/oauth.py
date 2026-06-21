@@ -145,7 +145,11 @@ class OAuthClient:
       else:
         tree = HTMLParser(resp.text)
         error = tree.css('div[class="alert alert-danger"]')
-        return {"success": False, "status_code": resp.status_code, "error": error[0].text(strip=True)}
+        error_msg = error[0].text(strip=True) if error else f"Login failed (status {resp.status_code})"
+        import logging
+
+        logging.getLogger("kkn.oauth").error("Login failed: status=%s, error=%s", resp.status_code, error_msg)
+        return {"success": False, "status_code": resp.status_code, "error": error_msg}
 
     except Exception as e:
       return {"success": False, "error": str(e)}
@@ -184,7 +188,14 @@ class OAuthClient:
 
         return {"success": True, "status_code": resp.status_code, "session_cookie": self.session_cookie}
       else:
-        return {"success": False, "status_code": resp.status_code, "error": "Failed to get session cookie"}
+        import logging
+
+        logging.getLogger("kkn.oauth").error("get_session_cookie got status %s: %s", resp.status_code, resp.text[:500])
+        return {
+          "success": False,
+          "status_code": resp.status_code,
+          "error": f"Failed to get session cookie (status {resp.status_code})",
+        }
 
     except Exception as e:
       return {"success": False, "error": str(e)}
@@ -215,7 +226,7 @@ class OAuthClient:
         "Sec-Fetch-User": "?1",
         "Sec-Fetch-Dest": "document",
         "Referer": f"{OAUTH_BASE_URL}/oauth/authorize?response_type=code&client_id={self.client_id}&redirect_uri={self.redirect_uri}&scope={ALL_SCOPE}&ticket={self.ticket}",
-        "Cookie": f"session={self.session_cookie}; _ga_B3TESR985X=GS2.1.s1754044819$o1$g0$t1754044819$j60$l0$h0; _ga_L4JC39NX24=GS2.1.s1754044820$o1$g0$t1754044820$j60$l0$h0; _ga=GA1.3.1600030693.1754044819; _gid=GA1.3.1789808150.1754044821",
+        "Cookie": f"session={self.session_cookie}",
       }
     )
 
@@ -228,7 +239,14 @@ class OAuthClient:
 
         return {"success": True, "status_code": resp.status_code, "authorization_code": code, "location": loc}
       else:
-        return {"success": False, "status_code": resp.status_code, "error": "Authorization failed"}
+        import logging
+
+        logging.getLogger("kkn.oauth").error("authorize_access got status %s: %s", resp.status_code, resp.text[:500])
+        return {
+          "success": False,
+          "status_code": resp.status_code,
+          "error": f"Authorization failed (status {resp.status_code})",
+        }
 
     except Exception as e:
       return {"success": False, "error": str(e)}
