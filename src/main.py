@@ -9,7 +9,7 @@ from tap import Tap
 import actions
 from ui.tui import console, print_choice, print_log, print_title, prompt_session
 from utils.attendance import handle_attendance, handle_check_status
-from utils.common import async_input
+from utils.common import async_input, env_bool
 from utils.kkn import KKN
 from utils.logger import setup_logging
 from utils.simaster import Simaster
@@ -27,6 +27,7 @@ class Parser(Tap):
   dry_run: bool = False  # Validate everything but skip the final check-in POST
   verify: bool = False  # After submit, verify each user's active session
   group_report: bool = False  # Generate per-user reports for all SIMASTER_CREDENTIALS
+  proker_presensi: bool = False  # Post logbook attendance for unattended sub-entries (group)
 
   def configure(self):
     self.add_argument("-s", "--submit")
@@ -121,6 +122,9 @@ def main() -> int:
         _generate_report_headless(username, password)
       if args.group_report:
         _generate_group_report()
+      if args.proker_presensi:
+        ok_proker = _run_proker_presensi(dry_run=args.dry_run)
+        ok = ok and ok_proker
       return 0 if ok else 1
     elif args.check:
       ok = handle_check_status(username, password)
@@ -132,6 +136,9 @@ def main() -> int:
       return 0 if ok else 1
     elif args.group_report:
       ok = _generate_group_report()
+      return 0 if ok else 1
+    elif args.proker_presensi:
+      ok = _run_proker_presensi(dry_run=args.dry_run)
       return 0 if ok else 1
     elif args.dry_run:
       ok = handle_attendance(username, password, headless=True, dry_run=True, verify=args.verify)
@@ -146,6 +153,16 @@ def main() -> int:
   except Exception as e:
     log.error("Fatal error in main: %s", e, exc_info=True)
     return 1
+
+
+def _run_proker_presensi(dry_run: bool = False) -> bool:
+  try:
+    from utils.proker_presensi import handle_proker_presensi
+
+    return asyncio.run(handle_proker_presensi(dry_run=dry_run, throttle=env_bool("THROTTLE", default=True)))
+  except Exception as e:
+    setup_logging().error("Proker presensi failed: %s", e, exc_info=True)
+    return False
 
 
 def _generate_report_headless(username: str, password: str) -> bool:

@@ -157,15 +157,29 @@ def _handle_attendance_env(
     throttle = Confirm.ask("Throttle in between check-in?", default=False)
     shuffle = Confirm.ask("Shuffle the check-in order?", default=True)
 
-  usernames = get_usernames()
+  locations, user_locations, default_location = load_location_config()
+
+  # When locations.yaml exists, user_locations is the single source of truth for who + where.
+  # Fall back to USERNAMES env when no locations.yaml.
+  if user_locations:
+    usernames = list(user_locations.keys())
+    log.info("Using %d users from locations.yaml", len(usernames))
+  else:
+    usernames = get_usernames()
+    log.info("Using %d users from USERNAMES env", len(usernames))
+
   if shuffle:
     random.shuffle(usernames)
 
   if not usernames:
-    print_log("No usernames configured in USERNAMES env var", "ERROR")
+    print_log("No usernames configured (neither locations.yaml nor USERNAMES)", "ERROR")
     return False, []
 
-  locations, user_locations, default_location = load_location_config()
+  # Medium throttle: random startup delay (0-5 min) when headless
+  if headless and throttle:
+    startup_delay = random.uniform(0, 300)
+    log.info("Startup throttle: sleeping %.1fs before first check-in", startup_delay)
+    time.sleep(startup_delay)
 
   length = len(usernames)
   all_ok = True
@@ -227,7 +241,9 @@ def _handle_attendance_env(
       all_ok = False
 
     if throttle and idx < length:
-      time.sleep(random.uniform(0.0, 5.0))
+      delay = random.uniform(10.0, 60.0) if headless else random.uniform(0.0, 5.0)
+      log.info("Throttling %.1fs before next user", delay)
+      time.sleep(delay)
 
   _print_summary(results)
   _write_result_json(results)
