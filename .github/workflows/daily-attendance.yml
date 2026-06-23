@@ -3,7 +3,7 @@ name: Daily KKN Attendance
 on:
   schedule:
     # 06:00 WIB = 23:00 UTC previous day
-    - cron: "0 23 * * *"
+    - cron: "0 22 * * *"
     # 20:00 WIB = 13:00 UTC
     - cron: "0 13 * * *"
   workflow_dispatch:
@@ -64,3 +64,4 @@ jobs:
           path: logs/
           retention-days: 7
           if-no-files-found: warn
+
