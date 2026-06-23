@@ -98,9 +98,15 @@ def check_active_session(username: str, access_token: str):
 
 
 def _is_already_checked_in(username: str, access_token: str) -> bool:
-  """Idempotency check: skip check-in if the user has an active session today."""
+  """Idempotency check: skip check-in if the user has an active session today.
+
+  Lets TokenExpiredError propagate so the caller can refresh and retry;
+  other unexpected errors fall back to "not checked in" so we proceed with check-in.
+  """
   try:
     return check_active_session(username, access_token) is not None
+  except TokenExpiredError:
+    raise
   except Exception as e:
     log.warning("Idempotency check failed for %s: %s — proceeding with check-in", username, e)
     return False
@@ -199,19 +205,44 @@ def _handle_attendance_env(
   for idx, user in enumerate(usernames, 1):
     payload, loc_name = _resolve_payload(user, data, locations, user_locations, default_location)
 
-    if idempotent and _is_already_checked_in(user, data.access_token):
-      print_log(f"[yellow]{user} already has an active session — skipping[/]")
-      log.info("Skipped %s (already checked in)", user)
-      results.append(
-        {
-          "username": user,
-          "location": loc_name,
-          "status": "skipped",
-          "attempts": 0,
-          "detail": "already has an active session",
-        }
-      )
-      continue
+    if idempotent:
+      # Refresh-once on TokenExpiredError so a stale token at run-start is
+      # refreshed before the first check-in attempt instead of wasting a POST.
+      already_in = None
+      try:
+        already_in = _is_already_checked_in(user, payload.access_token)
+      except TokenExpiredError:
+        if refresh_token_fn is not None:
+          new_token = refresh_token_fn()
+          if new_token:
+            data.access_token = new_token
+            payload.access_token = new_token
+            log.info("Token refreshed for %s during idempotency check; retrying", user)
+            try:
+              already_in = _is_already_checked_in(user, payload.access_token)
+            except TokenExpiredError:
+              log.warning("Token still expired for %s after refresh; proceeding to check-in", user)
+              already_in = False
+          else:
+            log.warning("Token refresh failed for %s during idempotency check; proceeding to check-in", user)
+            already_in = False
+        else:
+          log.warning("Token expired for %s and no refresh available; proceeding to check-in", user)
+          already_in = False
+
+      if already_in:
+        print_log(f"[yellow]{user} already has an active session — skipping[/]")
+        log.info("Skipped %s (already checked in)", user)
+        results.append(
+          {
+            "username": user,
+            "location": loc_name,
+            "status": "skipped",
+            "attempts": 0,
+            "detail": "already has an active session",
+          }
+        )
+        continue
 
     if dry_run:
       print_log(f"[blue]DRY RUN: would check in {user}@{loc_name}[/]")
@@ -237,7 +268,27 @@ def _handle_attendance_env(
     }
 
     if verify:
-      session = check_active_session(user, data.access_token)
+      # Use the (possibly-refreshed) per-user token, and refresh-once on
+      # TokenExpiredError so verify never aborts the whole multi-user run.
+      session = None
+      try:
+        session = check_active_session(user, payload.access_token)
+      except TokenExpiredError:
+        if refresh_token_fn is not None:
+          new_token = refresh_token_fn()
+          if new_token:
+            payload.access_token = new_token
+            log.info("Token refreshed for %s during verify; retrying active_session", user)
+            try:
+              session = check_active_session(user, payload.access_token)
+            except TokenExpiredError:
+              log.warning("Token still expired for %s after refresh during verify", user)
+              session = None
+          else:
+            log.error("Token refresh failed for %s during verify", user)
+        else:
+          log.error("Token expired for %s during verify and no refresh available", user)
+
       if session:
         result["verified"] = True
         result["checked_in_at"] = session["time"]
