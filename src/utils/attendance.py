@@ -67,8 +67,10 @@ def _complete_oauth_flow_with_retry(
     step = result.get("step", "?")
     err = result.get("error", "")
     if attempt < max_retries:
-      delay = backoff ** attempt
-      log.warning("OAuth attempt %d/%d failed at step=%s: %s — retrying in %.1fs", attempt, max_retries, step, err, delay)
+      delay = backoff**attempt
+      log.warning(
+        "OAuth attempt %d/%d failed at step=%s: %s — retrying in %.1fs", attempt, max_retries, step, err, delay
+      )
       time.sleep(delay)
     else:
       log.error("OAuth flow failed after %d attempts at step=%s: %s", max_retries, step, err)
@@ -234,9 +236,9 @@ def _handle_attendance_env(
     print_log("No usernames configured (neither locations.yaml nor USERNAMES)", "ERROR")
     return False, []
 
-  # Medium throttle: random startup delay (0-5 min) when headless
+  # Medium throttle: random startup delay (0-10 s) when headless
   if headless and throttle:
-    startup_delay = random.uniform(0, 300)
+    startup_delay = random.uniform(0, 10)
     log.info("Startup throttle: sleeping %.1fs before first check-in", startup_delay)
     time.sleep(startup_delay)
 
@@ -345,7 +347,7 @@ def _handle_attendance_env(
       all_ok = False
 
     if throttle and idx < length:
-      delay = random.uniform(10.0, 60.0) if headless else random.uniform(0.0, 5.0)
+      delay = random.uniform(10.0, 30.0) if headless else random.uniform(0.0, 5.0)
       log.info("Throttling %.1fs before next user", delay)
       time.sleep(delay)
 
