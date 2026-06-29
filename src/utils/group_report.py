@@ -78,9 +78,9 @@ async def _process_single_user(username: str, password: str, date_str: str) -> d
     simaster = Simaster(username, password)
     session = await simaster.login(verbose=False)
     if not session:
-      result["status"] = "login_failed"
-      result["error"] = "login failed"
-      log.error("Login failed for %s — skipping", username)
+      result["status"] = "login_failed" if not simaster.last_login_transient else "network_error"
+      result["error"] = "login failed" if not simaster.last_login_transient else "network error (transient)"
+      log.error("Login failed for %s (%s) — skipping", username, result["status"])
       return result
 
     kkn = KKN(session, simaster, autostart=True)
@@ -176,7 +176,8 @@ async def generate_group_reports() -> bool:
   else:
     log.info("Drive not configured — reports kept locally in %s", REPORT_DIR)
 
-  all_ok = all(s["status"] == "ok" for s in summaries)
+  hard_failures = [s for s in summaries if s["status"] not in ("ok", "network_error")]
+  all_ok = len(hard_failures) == 0
   print_log(
     f"Group report done: {sum(1 for s in summaries if s['status'] == 'ok')}/{len(summaries)} users OK",
     "SUCCESS" if all_ok else "WARN",

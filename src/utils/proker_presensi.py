@@ -54,6 +54,8 @@ def _print_summary(results: list[dict]):
       icon = "[red]✗ load_failed[/]"
     elif status == "login_failed":
       icon = "[red]✗ login_failed[/]"
+    elif status == "network_error":
+      icon = "[yellow]⚠ network_error[/]"
     elif status == "no_location":
       icon = "[red]✗ no_location[/]"
     else:
@@ -104,9 +106,9 @@ async def _process_single_user(
     simaster = Simaster(username, password)
     session = await simaster.login(verbose=False)
     if not session:
-      result["status"] = "login_failed"
-      result["errors"].append("login failed")
-      log.error("Login failed for %s — skipping proker presensi", username)
+      result["status"] = "login_failed" if not simaster.last_login_transient else "network_error"
+      result["errors"].append("login failed" if not simaster.last_login_transient else "network error (transient)")
+      log.error("Login failed for %s (%s) — skipping proker presensi", username, result["status"])
       return result
 
     kkn = KKN(session, simaster, autostart=True)
@@ -254,9 +256,10 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
   load_failed_count = sum(1 for r in results if r["status"] == "load_failed")
   login_failed_count = sum(1 for r in results if r["status"] == "login_failed")
   no_location_count = sum(1 for r in results if r["status"] == "no_location")
+  network_error_count = sum(1 for r in results if r["status"] == "network_error")
 
   hard_failures = load_failed_count + login_failed_count + no_location_count
-  all_ok = hard_failures == 0 and (ok_count + skipped_count + no_programs_count) == len(results)
+  all_ok = hard_failures == 0 and (ok_count + skipped_count + no_programs_count + network_error_count) == len(results)
 
   if hard_failures:
     level = "ERROR"
@@ -264,7 +267,14 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
       f"Proker presensi done: {ok_count}/{len(results)} OK, "
       f"{load_failed_count} load_failed, {login_failed_count} login_failed, "
       f"{no_location_count} no_location, {no_programs_count} no_programs, "
-      f"{skipped_count} skipped"
+      f"{skipped_count} skipped, {network_error_count} network_error"
+    )
+  elif network_error_count:
+    level = "WARN"
+    msg = (
+      f"Proker presensi done: {ok_count}/{len(results)} OK, "
+      f"{network_error_count} network_error (transient), "
+      f"{no_programs_count} no_programs, {skipped_count} skipped"
     )
   elif no_programs_count or skipped_count:
     level = "WARN"

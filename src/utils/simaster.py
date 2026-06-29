@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 import re
@@ -24,12 +25,18 @@ CAPTCHA_IMAGE_URL = f"{BASE_URL}/ugmfw/signin_simaster/captcha_sound/"
 CACHE_DIR = Path(os.getenv("CACHE_DIR", ".cache"))
 CACHE_THRESHOLD = int(os.getenv("CACHE_THRESHOLD", str(500)))
 
+SSO_TIMEOUT = float(os.getenv("SSO_TIMEOUT", "30"))
+SSO_MAX_RETRIES = int(os.getenv("SSO_MAX_RETRIES", "3"))
+SSO_RETRY_BACKOFF = float(os.getenv("SSO_RETRY_BACKOFF", "2.0"))
+
 SSO_USER_AGENT = (
   "Mozilla/5.0 (Linux; Android 12; sdk_gphone64_x86_64 Build/SE1A.220826.008; wv) "
   "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36"
 )
 
 MAX_CAPTCHA_ATTEMPTS = 5
+
+TRANSIENT_EXCEPTIONS = (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout)
 
 
 def _solve_captcha(image_bytes: bytes) -> str | None:
@@ -50,6 +57,7 @@ class Simaster:
   def __init__(self, username: str, password: str):
     self.username = username
     self.password = password
+    self.last_login_transient = False
     try:
       CACHE_DIR.mkdir(parents=True, exist_ok=True)
       self.cache: FileSystemCache = FileSystemCache(str(CACHE_DIR), threshold=CACHE_THRESHOLD)
@@ -132,8 +140,8 @@ class Simaster:
     log.error("Captcha verification failed after %d attempts for %s", MAX_CAPTCHA_ATTEMPTS, self.username)
     return False
 
-  async def _sso_login(self, verbose: bool = False) -> httpx.AsyncClient | None:
-    client = httpx.AsyncClient(timeout=30.0)
+  async def _sso_login_attempt(self, verbose: bool = False) -> httpx.AsyncClient | None:
+    client = httpx.AsyncClient(timeout=SSO_TIMEOUT)
 
     try:
       if verbose:
@@ -244,8 +252,41 @@ class Simaster:
 
     except Exception as e:
       log.error("SSO fallback failed for %s: %s", self.username, e, exc_info=True)
-      await client.aclose()
+      try:
+        await client.aclose()
+      except Exception:
+        pass
+      if isinstance(e, TRANSIENT_EXCEPTIONS):
+        raise
       return None
+
+  async def _sso_login(self, verbose: bool = False) -> httpx.AsyncClient | None:
+    self._sso_was_transient = False
+    last_exc: Exception | None = None
+    for attempt in range(1, SSO_MAX_RETRIES + 1):
+      try:
+        result = await self._sso_login_attempt(verbose=verbose)
+        if result is not None:
+          if attempt > 1:
+            log.info("SSO fallback succeeded on attempt %d/%d for %s", attempt, SSO_MAX_RETRIES, self.username)
+          return result
+        return None
+      except TRANSIENT_EXCEPTIONS as e:
+        last_exc = e
+        if attempt < SSO_MAX_RETRIES:
+          delay = SSO_RETRY_BACKOFF ** attempt
+          log.warning(
+            "SSO fallback attempt %d/%d transient error for %s: %s — retrying in %.1fs",
+            attempt, SSO_MAX_RETRIES, self.username, e, delay,
+          )
+          await asyncio.sleep(delay)
+        else:
+          log.error(
+            "SSO fallback failed after %d attempts for %s (last error: %s)",
+            SSO_MAX_RETRIES, self.username, e,
+          )
+    self._sso_was_transient = True
+    return None
 
   async def login(
     self,
@@ -256,6 +297,7 @@ class Simaster:
   ) -> httpx.AsyncClient | None:
     self.username = username or self.username
     self.password = password or self.password
+    self.last_login_transient = False
 
     key = self._get_cache_key(self.username, self.password)
     if reuse_session and (client := await self._check_cache(key)):
@@ -289,7 +331,21 @@ class Simaster:
         await client.aclose()
 
         log.info("service_login returned isLogin=0 for %s, trying SSO fallback", self.username)
-        return await self._sso_login(verbose=verbose)
+        result = await self._sso_login(verbose=verbose)
+        if result is None:
+          self.last_login_transient = self._sso_was_transient
+        return result
+
+    except TRANSIENT_EXCEPTIONS as e:
+      if verbose:
+        print_log(f"Network error during login for {self.username}: {e}", "ERROR")
+
+      log.warning("service_login raised transient %s for %s, trying SSO fallback", type(e).__name__, self.username)
+      await client.aclose()
+      result = await self._sso_login(verbose=verbose)
+      if result is None:
+        self.last_login_transient = True
+      return result
 
     except Exception as e:
       if verbose:
@@ -297,4 +353,7 @@ class Simaster:
 
       log.warning("service_login raised %s for %s, trying SSO fallback", type(e).__name__, self.username)
       await client.aclose()
-      return await self._sso_login(verbose=verbose)
+      result = await self._sso_login(verbose=verbose)
+      if result is None:
+        self.last_login_transient = self._sso_was_transient
+      return result
