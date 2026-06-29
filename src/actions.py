@@ -31,6 +31,8 @@ def _filter_unattended_program(data: dict | None, source: str = "assisted") -> l
       for sub in entry.get("sub_entries", []):
         if not (url := sub.get("attendance_link")):
           continue
+        if sub.get("is_attended"):
+          continue
 
         info = {**base_info, "entry": entry.get("title"), "sub_entry": sub.get("title"), "url": url}
         filtered_program.append(info)

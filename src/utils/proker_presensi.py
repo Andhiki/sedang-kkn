@@ -8,6 +8,7 @@ from pathlib import Path
 from rich.table import Table
 
 from ui.tui import console, print_log
+from utils.credentials import load_credentials
 from utils.kkn import KKN
 from utils.locations import load_location_config, resolve_location
 from utils.logger import get_logger
@@ -16,22 +17,6 @@ from utils.simaster import Simaster
 log = get_logger("proker_presensi")
 
 RESULT_FILE = Path(os.getenv("REPORT_DIR", "reports")) / "proker-result.json"
-
-
-def _load_credentials() -> dict[str, str]:
-  raw = os.getenv("SIMASTER_CREDENTIALS")
-  if not raw:
-    log.error("SIMASTER_CREDENTIALS env var is not set — cannot run proker presensi")
-    return {}
-  try:
-    creds = json.loads(raw)
-    if not isinstance(creds, dict):
-      log.error("SIMASTER_CREDENTIALS must be a JSON object {username: password}")
-      return {}
-    return creds
-  except json.JSONDecodeError as e:
-    log.error("SIMASTER_CREDENTIALS is not valid JSON: %s", e)
-    return {}
 
 
 def _write_result_json(results: list[dict]):
@@ -69,6 +54,8 @@ def _print_summary(results: list[dict]):
       icon = "[red]✗ load_failed[/]"
     elif status == "login_failed":
       icon = "[red]✗ login_failed[/]"
+    elif status == "no_location":
+      icon = "[red]✗ no_location[/]"
     else:
       icon = f"[red]✗ {status}[/]"
     table.add_row(
@@ -101,7 +88,6 @@ async def _process_single_user(
     "location": "unknown",
   }
 
-  # Resolve location for this user
   loc = resolve_location(username, locations, user_locations, default_location)
   if loc:
     result["location"] = loc.name
@@ -109,15 +95,10 @@ async def _process_single_user(
     long = loc.longitude
     radius = loc.radius
   else:
-    # Fallback to env
-    try:
-      lat = float(os.getenv("KKN_LOCATION_LATITUDE", "0"))
-      long = float(os.getenv("KKN_LOCATION_LONGITUDE", "0"))
-      radius = int(os.getenv("KKN_LOCATION_RADIUS_METERS", "100"))
-    except (TypeError, ValueError):
-      result["status"] = "error"
-      result["errors"].append("No location configured for user and env fallback invalid")
-      return result
+    result["status"] = "no_location"
+    result["errors"].append("no location configured for this user and no default location")
+    log.error("No location configured for %s — skipping proker presensi", username)
+    return result
 
   try:
     simaster = Simaster(username, password)
@@ -132,8 +113,6 @@ async def _process_single_user(
     if kkn.loader:
       await kkn.loader
 
-    # Classify program load outcome — distinguishes a genuine failure from
-    # "user has 0 programs registered" and "all sub-entries already attended".
     if kkn.load_error:
       result["status"] = "load_failed"
       result["errors"].append(kkn.load_error)
@@ -148,7 +127,6 @@ async def _process_single_user(
       await session.aclose()
       return result
 
-    # Find unattended sub-entries from both main and assisted programs
     from actions import _filter_unattended_program
 
     unattended_main = _filter_unattended_program(kkn.main_program, source="main")
@@ -159,6 +137,7 @@ async def _process_single_user(
 
     if not unattended:
       log.info("No unattended sub-entries for %s", username)
+      result["status"] = "skipped"
       await session.aclose()
       return result
 
@@ -175,6 +154,7 @@ async def _process_single_user(
 
       if dry_run:
         log.info("DRY RUN: would post proker presensi for %s — %s", username, sub_title)
+        posted += 1
         continue
 
       rand_lat, rand_long = generate_random_points(lat, long, radius)
@@ -185,7 +165,6 @@ async def _process_single_user(
       else:
         result["errors"].append(f"failed to post: {sub_title}")
 
-      # Throttle between sub-entries
       if throttle:
         delay = random.uniform(2.0, 10.0)
         time.sleep(delay)
@@ -203,15 +182,43 @@ async def _process_single_user(
 
 
 async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -> bool:
-  """Run proker presensi for all users in SIMASTER_CREDENTIALS."""
-  creds = _load_credentials()
+  """Run proker presensi for all users in SIMASTER_CREDENTIALS (or credentials.json)."""
+  creds = load_credentials()
   if not creds:
-    print_log("No credentials found in SIMASTER_CREDENTIALS — cannot run proker presensi", "ERROR")
+    print_log("No credentials found — cannot run proker presensi", "ERROR")
     return False
 
   locations, user_locations, default_location = load_location_config()
 
-  log.info("Starting proker presensi for %d users", len(creds))
+  # Validate: warn about users in credentials but not in user_locations
+  if user_locations:
+    missing = [u for u in creds if u not in user_locations]
+    if missing and not default_location:
+      log.warning(
+        "Users in credentials but not in user_locations (and no default_location): %s — they will be skipped",
+        ", ".join(missing),
+      )
+
+  # Filter out users with empty passwords
+  skipped_empty = []
+  valid_creds = {}
+  for username, password in creds.items():
+    if not password:
+      skipped_empty.append(username)
+      log.warning("Skipping %s — empty password in credentials", username)
+    else:
+      valid_creds[username] = password
+
+  if skipped_empty:
+    print_log(
+      f"[yellow]Skipped {len(skipped_empty)} users with empty passwords: {', '.join(skipped_empty)}[/]"
+    )
+
+  if not valid_creds:
+    print_log("No valid credentials found (all passwords empty) — cannot run proker presensi", "ERROR")
+    return False
+
+  log.info("Starting proker presensi for %d users (skipped %d with empty passwords)", len(valid_creds), len(skipped_empty))
 
   # Medium throttle: random startup delay (0-5 min)
   if throttle and not dry_run:
@@ -220,11 +227,11 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
     time.sleep(startup_delay)
 
   results = []
-  usernames = list(creds.keys())
+  usernames = list(valid_creds.keys())
   random.shuffle(usernames)
 
   for idx, username in enumerate(usernames, 1):
-    password = creds[username]
+    password = valid_creds[username]
     print(f"Processing proker presensi for {username}...")
 
     user_result = await _process_single_user(
@@ -242,27 +249,28 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
   _write_result_json(results)
 
   ok_count = sum(1 for r in results if r["status"] == "ok")
-  load_failed_count = sum(1 for r in results if r["status"] == "load_failed")
+  skipped_count = sum(1 for r in results if r["status"] == "skipped")
   no_programs_count = sum(1 for r in results if r["status"] == "no_programs")
+  load_failed_count = sum(1 for r in results if r["status"] == "load_failed")
   login_failed_count = sum(1 for r in results if r["status"] == "login_failed")
+  no_location_count = sum(1 for r in results if r["status"] == "no_location")
 
-  # load_failed and login_failed are hard failures — they should fail the run.
-  # no_programs is a soft skip (user genuinely has no programs), not a failure.
-  hard_failures = load_failed_count + login_failed_count
-  all_ok = hard_failures == 0 and (ok_count + no_programs_count) == len(results)
+  hard_failures = load_failed_count + login_failed_count + no_location_count
+  all_ok = hard_failures == 0 and (ok_count + skipped_count + no_programs_count) == len(results)
 
   if hard_failures:
     level = "ERROR"
     msg = (
       f"Proker presensi done: {ok_count}/{len(results)} OK, "
       f"{load_failed_count} load_failed, {login_failed_count} login_failed, "
-      f"{no_programs_count} no_programs"
+      f"{no_location_count} no_location, {no_programs_count} no_programs, "
+      f"{skipped_count} skipped"
     )
-  elif no_programs_count:
+  elif no_programs_count or skipped_count:
     level = "WARN"
     msg = (
       f"Proker presensi done: {ok_count}/{len(results)} OK, "
-      f"{no_programs_count} no_programs (soft skip)"
+      f"{no_programs_count} no_programs, {skipped_count} skipped"
     )
   else:
     level = "SUCCESS"

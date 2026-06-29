@@ -495,7 +495,7 @@ class KKN:
 
     if not (page_token := self.client.cookies.get("simasterUGM_cookie", None)):
       print_log("No `cookie` found", "ERROR")
-      return
+      return False
 
     payload = {
       "timelineId": url_parts[-5],

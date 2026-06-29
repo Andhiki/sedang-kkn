@@ -21,3 +21,7 @@ reports/
 # Location config (may contain real coords)
 locations.yaml
 !locations.example.yaml
+
+# Credentials (contains passwords)
+credentials.json
+!credentials.json.example

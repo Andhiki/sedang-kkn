@@ -6,6 +6,7 @@ from pathlib import Path
 from rich.table import Table
 
 from ui.tui import console, print_log
+from utils.credentials import load_credentials
 from utils.drive import upload_directory
 from utils.kkn import KKN
 from utils.logger import get_logger
@@ -15,23 +16,6 @@ from utils.simaster import Simaster
 log = get_logger("group_report")
 
 REPORT_DIR = Path(os.getenv("REPORT_DIR", "reports"))
-
-
-def _load_credentials() -> dict[str, str]:
-  """Load SIMASTER_CREDENTIALS JSON secret/env: {username: password}."""
-  raw = os.getenv("SIMASTER_CREDENTIALS")
-  if not raw:
-    log.error("SIMASTER_CREDENTIALS env var is not set — cannot generate group report")
-    return {}
-  try:
-    creds = json.loads(raw)
-    if not isinstance(creds, dict):
-      log.error("SIMASTER_CREDENTIALS must be a JSON object {username: password}")
-      return {}
-    return creds
-  except json.JSONDecodeError as e:
-    log.error("SIMASTER_CREDENTIALS is not valid JSON: %s", e)
-    return {}
 
 
 def _build_group_summary_html(user_summaries: list[dict]) -> str:
@@ -129,9 +113,9 @@ async def _process_single_user(username: str, password: str, date_str: str) -> d
 
 async def generate_group_reports() -> bool:
   """Generate per-user reports for all SIMASTER_CREDENTIALS + group summary + Drive upload."""
-  creds = _load_credentials()
+  creds = load_credentials()
   if not creds:
-    print_log("No credentials found in SIMASTER_CREDENTIALS — cannot generate group report", "ERROR")
+    print_log("No credentials found — cannot generate group report", "ERROR")
     return False
 
   date_str = datetime.now().strftime("%Y-%m-%d")
