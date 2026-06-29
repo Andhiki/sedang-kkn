@@ -210,19 +210,19 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
       valid_creds[username] = password
 
   if skipped_empty:
-    print_log(
-      f"[yellow]Skipped {len(skipped_empty)} users with empty passwords: {', '.join(skipped_empty)}[/]"
-    )
+    print_log(f"[yellow]Skipped {len(skipped_empty)} users with empty passwords: {', '.join(skipped_empty)}[/]")
 
   if not valid_creds:
     print_log("No valid credentials found (all passwords empty) — cannot run proker presensi", "ERROR")
     return False
 
-  log.info("Starting proker presensi for %d users (skipped %d with empty passwords)", len(valid_creds), len(skipped_empty))
+  log.info(
+    "Starting proker presensi for %d users (skipped %d with empty passwords)", len(valid_creds), len(skipped_empty)
+  )
 
-  # Medium throttle: random startup delay (0-5 min)
+  # Medium throttle: random startup delay (0-10s)
   if throttle and not dry_run:
-    startup_delay = random.uniform(0, 300)
+    startup_delay = random.uniform(0, 10)
     log.info("Startup throttle: sleeping %.1fs before first proker presensi", startup_delay)
     time.sleep(startup_delay)
 
@@ -241,7 +241,7 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
 
     # Throttle between users
     if throttle and idx < len(usernames):
-      delay = random.uniform(10.0, 60.0)
+      delay = random.uniform(10.0, 30.0)
       log.info("Throttling %.1fs before next user", delay)
       time.sleep(delay)
 
@@ -269,8 +269,7 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
   elif no_programs_count or skipped_count:
     level = "WARN"
     msg = (
-      f"Proker presensi done: {ok_count}/{len(results)} OK, "
-      f"{no_programs_count} no_programs, {skipped_count} skipped"
+      f"Proker presensi done: {ok_count}/{len(results)} OK, {no_programs_count} no_programs, {skipped_count} skipped"
     )
   else:
     level = "SUCCESS"
@@ -278,3 +277,4 @@ async def handle_proker_presensi(dry_run: bool = False, throttle: bool = True) -
 
   print_log(msg, level)
   return all_ok
+
