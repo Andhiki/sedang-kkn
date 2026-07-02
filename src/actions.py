@@ -5,10 +5,12 @@ import httpx
 from prompt_toolkit import HTML
 from rich.prompt import Prompt
 
-from datatypes import SubEntryData
+from datatypes import EntryData
 from ui.prompt import get_entry_details_from_user, get_sub_entry_details_from_user, parse_selection
 from ui.tables import print_assisted_program, print_program_details, print_program_title, print_unattended_program
-from ui.textual_table import run_program_table
+from rich.table import Table
+from rich import box
+
 from ui.tui import console, print_log
 from utils.common import async_input, generate_random_points, load_background
 from utils.kkn import KKN
@@ -30,14 +32,14 @@ def _filter_unattended_program(data: dict | None, source: str = "assisted") -> l
       entries = value
       base_info = {"pic": key, "type": "bantu"}
 
-    for entry in entries:
+    for entry in entries or []:
       for sub in entry.get("sub_entries", []):
         if not (url := sub.get("attendance_link")):
           continue
         if sub.get("is_attended"):
           continue
 
-        info = {**base_info, "entry": entry.get("title"), "sub_entry": sub.get("title"), "url": url}
+        info = {**base_info, "entry": entry.get("title"), "sub_entry": sub.get("title"), "url": url, "date": sub.get("date")}
         filtered_program.append(info)
 
   return filtered_program
@@ -82,29 +84,55 @@ async def manage_entry(kkn: KKN):
   if not p_id:
     return
 
-  selection = await run_program_table({p_id: kkn.main_program[p_id]}, title="Program Utama")
-  if not selection:
+  program = kkn.main_program[p_id]
+  entries = program.get("entries", [])
+  if not entries:
+    print_log("No entries found for this program", "ERROR")
     return
 
-  if selection.get("_type") == "sub_entry":
-    print_log("Please select a top-level entry row (not a sub-entry) for this menu.", "WARN")
+  table = Table(box=box.ROUNDED, title=f"Program Utama — {program.get('title', 'N/A')}")
+  table.add_column("No", justify="center", style="#fab387", width=2)
+  table.add_column("Entry", style="#89b4fa")
+  table.add_column("Date", justify="center", style="#89b4fa")
+  table.add_column("Location", style="#cdd6f4")
+
+  for i, entry in enumerate(entries, 1):
+    table.add_row(str(i), entry.get("title", "N/A"), entry.get("date", "N/A"), entry.get("location", "N/A"))
+  console.print(table)
+
+  try:
+    choice = await async_input(
+      HTML(
+        f'Enter entry choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(entries)}</num>): </delim>'
+      ),
+      int,
+    )
+  except ValueError:
+    print_log("Invalid entry choice", "ERROR")
     return
+
+  if choice < 1 or choice > len(entries):
+    print_log("Invalid entry choice", "ERROR")
+    return
+
+  selected_entry = entries[choice - 1]
+  edit_url = selected_entry.get("edit_url")
 
   mode = Prompt.ask("Mode: (e)dit existing, (a)dd new, (c)ancel", choices=["e", "a", "c"], default="a")
   if mode == "c":
     return
 
-  edit_url = None
   if mode == "e":
-    edit_url = selection.get("edit_url")
     if not edit_url:
       print_log("No edit URL available for this entry (may be locked).", "ERROR")
       return
+  else:
+    edit_url = None
 
   data = get_entry_details_from_user(
     kkn.main_program[p_id],
     edit_mode=(mode == "e"),
-    existing=selection,
+    existing=selected_entry,
   )
   if data:
     await kkn.add_logbook_entry(p_id, data, edit_url=edit_url)
@@ -118,22 +146,75 @@ async def manage_sub_entry(kkn: KKN):
   if not p_id:
     return
 
-  selection = await run_program_table({p_id: kkn.main_program[p_id]}, title="Program Utama")
-  if not selection:
+  program = kkn.main_program[p_id]
+  entries = program.get("entries", [])
+  if not entries:
+    print_log("No entries found for this program", "ERROR")
     return
 
-  if selection.get("_type") != "sub_entry":
-    print_log("Please select a sub-entry row for this menu.", "WARN")
+  table = Table(box=box.ROUNDED, title=f"Program Utama — {program.get('title', 'N/A')}")
+  table.add_column("No", justify="center", style="#fab387", width=2)
+  table.add_column("Entry", style="#89b4fa")
+  table.add_column("Date", justify="center", style="#89b4fa")
+
+  for i, entry in enumerate(entries, 1):
+    table.add_row(str(i), entry.get("title", "N/A"), entry.get("date", "N/A"))
+  console.print(table)
+
+  try:
+    entry_choice = await async_input(
+      HTML(
+        f'Enter entry choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(entries)}</num>): </delim>'
+      ),
+      int,
+    )
+  except ValueError:
+    print_log("Invalid entry choice", "ERROR")
     return
 
-  mode = Prompt.ask("Mode: (e)dit existing, (a)dd new, (c)ancel", choices=["e", "a", "c"], default="a")
+  if entry_choice < 1 or entry_choice > len(entries):
+    print_log("Invalid entry choice", "ERROR")
+    return
+
+  selected_entry = entries[entry_choice - 1]
+  sub_entries = selected_entry.get("sub_entries", [])
+
+  sub_table = Table(box=box.ROUNDED, title=f"Sub-entries — {selected_entry.get('title', 'N/A')}")
+  sub_table.add_column("No", justify="center", style="#fab387", width=2)
+  sub_table.add_column("Sub-entry", style="#89b4fa")
+  sub_table.add_column("Date", justify="center", style="#89b4fa")
+  sub_table.add_column("Status", justify="center")
+
+  for i, sub in enumerate(sub_entries, 1):
+    status = "Sudah Presensi" if sub.get("is_attended") else sub.get("status", "Belum Presensi")
+    sub_table.add_row(str(i), sub.get("title", "N/A"), sub.get("date", "N/A"), status)
+  console.print(sub_table)
+
+  mode = Prompt.ask("Mode: (e)dit existing, (a)dd new, (c)ancel", choices=["e", "a", "c"], default="e")
   if mode == "c":
     return
 
-  entry = selection.get("_entry")
+  existing_sub = None
   edit_url = None
   if mode == "e":
-    edit_url = selection.get("edit_url")
+    if not sub_entries:
+      print_log("No sub-entries to edit", "ERROR")
+      return
+    try:
+      sub_choice = await async_input(
+        HTML(
+          f'Enter sub-entry choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(sub_entries)}</num>): </delim>'
+        ),
+        int,
+      )
+    except ValueError:
+      print_log("Invalid sub-entry choice", "ERROR")
+      return
+    if sub_choice < 1 or sub_choice > len(sub_entries):
+      print_log("Invalid sub-entry choice", "ERROR")
+      return
+    existing_sub = sub_entries[sub_choice - 1]
+    edit_url = existing_sub.get("edit_url")
     if not edit_url:
       print_log("No edit URL available for this sub-entry (may be locked).", "ERROR")
       return
@@ -142,8 +223,8 @@ async def manage_sub_entry(kkn: KKN):
     result = get_sub_entry_details_from_user(
       kkn.main_program[p_id],
       edit_mode=(mode == "e"),
-      entry=entry,
-      existing_sub=selection,  # type: ignore[arg-type]
+      entry=selected_entry,
+      existing_sub=existing_sub,
     )
     if result:
       await kkn.add_logbook_sub_entry(result[0] or "", result[1], edit_url=edit_url)

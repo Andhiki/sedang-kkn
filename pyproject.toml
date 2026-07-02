@@ -13,16 +13,21 @@
     "google-genai>=1.56.0",
     "httpx>=0.28.1",
     "ics>=0.7.2",
-    "lxml>=6.0.2",
     "prompt-toolkit>=3.0.52",
-    "pyjwt>=2.10.1",
     "pyyaml>=6.0.2",
     "requests>=2.32.5",
     "rich>=14.2.0",
     "selectolax>=0.4.6",
+    "textual>=0.50.0",
     "typed-argument-parser>=1.11.0",
     "weasyprint>=68.0",
   ]
+
+[dependency-groups]
+  dev = ["pytest>=8.0.0"]
+
+[tool.pytest.ini_options]
+  pythonpath = ["src"]
 
 [tool.ruff]
   exclude        = [

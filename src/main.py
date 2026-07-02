@@ -7,16 +7,13 @@ from prompt_toolkit import HTML
 from tap import Tap
 
 import actions
-from ui.tui import console, print_choice, print_log, print_title, prompt_session
+from ui.tui import console, print_choice, print_hours_summary, print_log, print_title, prompt_session
 from utils.attendance import handle_attendance, handle_check_status
 from utils.common import async_input, env_bool
 from utils.kkn import KKN
 from utils.logger import setup_logging
 from utils.simaster import Simaster
 
-CLIENT_ID = "e6abd4e380a5462e83873fe22ab8c219yVaU"
-CLIENT_SECRET = "THFnhmQ6jckSWWzV6m9Mj78CexLCKjd009f4h9gQaIo8fUUULOhWP7DD"
-REDIRECT_URI = "id.ac.ugm.student.vnext.simaster://oauth2"
 
 
 class Parser(Tap):
@@ -42,11 +39,19 @@ async def main_async(username: str, password: str):
     return
 
   kkn_manager = KKN(session, simaster_acc)
+  if kkn_manager.loader and not kkn_manager.loader.done():
+    with console.status("[blue]Loading KKN programs...[/]", spinner="dots"):
+      try:
+        await kkn_manager.loader
+      except Exception:
+        pass
 
   first = True
   while True:
     print_title() if not first else print()
     first = False
+
+    print_hours_summary(kkn_manager.main_program, kkn_manager.assisted_program)
 
     print_choice()
     choice = await async_input(

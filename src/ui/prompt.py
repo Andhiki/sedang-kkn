@@ -134,9 +134,9 @@ def get_sub_entry_details_from_user(
 ):
   program_title = data["title"]
 
-  if edit_mode and entry:
+  if entry:
     sub_entry = entry
-    console.print(f"\nEditing sub-entry under [bold blue]{sub_entry['title']}")
+    console.print(f"\nSub-entry under [bold blue]{sub_entry['title']}")
     print_program_sub_entries(sub_entry)
   else:
     console.print(f"\nCurrent entries for [bold blue]{data['title']}")
@@ -201,40 +201,40 @@ def get_sub_entry_details_from_user(
 
   use_ai = False
   if gen.is_generative_ai_available() and not (edit_mode and description):
-    use_ai = Confirm.ask("[blue]󰫢 [/]Gemini AI is available. Generate description and results?", default=False)
+    provider = os.getenv("AI_PROVIDER", "gemini").lower()
+    use_ai = Confirm.ask(f"[blue]󰫢 [/]{provider.title()} AI is available. Generate description and results?", default=False)
 
   if use_ai:
-    with console.status("Generating Content with Gemini...") as status:
-      while True:
-        desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title)
-        console.print(Panel(Markdown(desc_prompt), title="Current Prompt"))
-        if Confirm.ask("Add additional context?", default=False):
-          context = Prompt.ask("Enter additional context")
-          desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title, context)
+    entry_title = sub_entry.get("title") if sub_entry else None
+    while True:
+      desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title, entry_title=entry_title)
+      console.print(Panel(Markdown(desc_prompt), title="Current Prompt"))
+      if Confirm.ask("Add additional context?", default=False):
+        context = Prompt.ask("Enter additional context")
+        desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title, context, entry_title=entry_title)
 
-        status.update("Generating program description...")
+      with console.status("[blue]Generating description...[/]"):
         generated_desc = gen.generate_content(desc_prompt)
 
-        result_prompt = gen.generate_result_prompt(program_title, sub_entry_title, generated_desc)
-        status.update("Generating program description...")
+      result_prompt = gen.generate_result_prompt(program_title, sub_entry_title, generated_desc, entry_title=entry_title)
+      with console.status("[blue]Generating result...[/]"):
+        generated_result = gen.generate_content(result_prompt)
+      if len(generated_result) > 256:
+        generated_result = generated_result[:253] + "..."
 
-        while len((generated_result := gen.generate_content(result_prompt))) > 256:
-          pass
+      generated_content = f"Deskripsi kegiatan:\n{generated_desc}\nHasil Kegiatan:\n{generated_result}"
+      console.print(Panel(generated_content, title="AI Generated Content"))
 
-        generated_content = f"Deskripsi kegiatan:\n{generated_desc}\nHasil Kegiatan:\n{generated_result}"
-        console.print(Panel(generated_content, title="AI Generated Content"))
-
-        choice = Prompt.ask("Accept (a), Regenerate (r), or write Manually (m)?", choices=["a", "r", "m"], default="a")
-        if choice == "r":
-          print("Regenerating content...")
-          continue
-        elif choice == "m":
-          description = input("\nEnter Acticity Description: ")
-          result = input("Enter Activity Result: ")
-          break
-        else:
-          description, result = generated_desc, generated_result
-          break
+      choice = Prompt.ask("Accept (a), Regenerate (r), or write Manually (m)?", choices=["a", "r", "m"], default="a")
+      if choice == "r":
+        continue
+      elif choice == "m":
+        description = input("\nEnter Acticity Description: ")
+        result = input("Enter Activity Result: ")
+        break
+      else:
+        description, result = generated_desc, generated_result
+        break
   elif not description:
     description = input("\nEnter Acticity Description: ")
     result = input("Enter Activity Result: ")

@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,60 @@ from utils.simaster import Simaster
 log = get_logger("proker_presensi")
 
 RESULT_FILE = Path(os.getenv("REPORT_DIR", "reports")) / "proker-result.json"
+
+
+_ID_MONTHS = {
+  "januari": 1,
+  "februari": 2,
+  "maret": 3,
+  "april": 4,
+  "mei": 5,
+  "juni": 6,
+  "juli": 7,
+  "agustus": 8,
+  "september": 9,
+  "oktober": 10,
+  "november": 11,
+  "desember": 12,
+}
+
+
+def _parse_sub_entry_start(date_str: str) -> datetime | None:
+  """Parse start datetime from Indonesian strings like '2 Juli 2026 07:00 - 08:00 WIB'."""
+  if not date_str or date_str == "N/A":
+    return None
+  match = re.search(r"(\d{1,2})\s+([a-zA-Z]+)\s+(\d{4})\s+(\d{2}):(\d{2})", date_str)
+  if not match:
+    return None
+  day, month_name, year, hour, minute = match.groups()
+  month = _ID_MONTHS.get(month_name.lower())
+  if not month:
+    return None
+  try:
+    return datetime(int(year), month, int(day), int(hour), int(minute))
+  except ValueError:
+    return None
+
+
+def _is_future_sub_entry(item: dict, now: datetime) -> bool:
+  """Return True if the sub-entry start time is later than `now`."""
+  start = _parse_sub_entry_start(item.get("date", ""))
+  if not start:
+    return False
+  return start > now
+
+
+def _filter_future_sub_entries(unattended: list[dict], now: datetime | None = None) -> tuple[list[dict], int]:
+  """Remove sub-entries whose start time is in the future. Returns (filtered, skipped_count)."""
+  now = now or datetime.now()
+  filtered = []
+  skipped = 0
+  for item in unattended:
+    if _is_future_sub_entry(item, now):
+      skipped += 1
+      continue
+    filtered.append(item)
+  return filtered, skipped
 
 
 def _write_result_json(results: list[dict]):
@@ -134,6 +189,12 @@ async def _process_single_user(
     unattended_main = _filter_unattended_program(kkn.main_program, source="main")
     unattended_assisted = _filter_unattended_program(kkn.assisted_program, source="assisted")
     unattended = [*unattended_main, *unattended_assisted]
+
+    # Skip sub-entries scheduled in the future so we don't post attendance before the activity starts.
+    unattended, skipped_future = _filter_future_sub_entries(unattended)
+
+    if skipped_future:
+      log.info("Skipped %d future sub-entries for %s", skipped_future, username)
 
     result["unattended_count"] = len(unattended)
 

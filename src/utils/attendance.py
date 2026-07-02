@@ -26,9 +26,9 @@ class TokenExpiredError(Exception):
   """Raised when SIMASTER returns 401 TOKEN_EXPIRED so callers can refresh and retry."""
 
 
-CLIENT_ID = "e6abd4e380a5462e83873fe22ab8c219yVaU"
-CLIENT_SECRET = "THFnhmQ6jckSWWzV6m9Mj78CexLCKjd009f4h9gQaIo8fUUULOhWP7DD"
-REDIRECT_URI = "id.ac.ugm.student.vnext.simaster://oauth2"
+CLIENT_ID = os.getenv("SIMASTER_CLIENT_ID", "")
+CLIENT_SECRET = os.getenv("SIMASTER_CLIENT_SECRET", "")
+REDIRECT_URI = os.getenv("SIMASTER_REDIRECT_URI", "id.ac.ugm.student.vnext.simaster://oauth2")
 BASE_URL = "https://api.simaster.ugm.ac.id/vnext/v1/checkpoint"
 
 RESULT_FILE = Path(os.getenv("REPORT_DIR", "reports")) / "result.json"
@@ -194,12 +194,22 @@ def _resolve_payload(
   locations: dict[str, Location],
   user_locations: dict[str, str],
   default_location: str | None,
-) -> tuple[CheckInPayload, str]:
-  """Return (payload, location_name) for a user."""
+) -> tuple[CheckInPayload | None, str]:
+  """Return (payload, location_name) for a user.
+
+  When a multi-location config is active (locations dict is non-empty) and the
+  user is not mapped to a location, return (None, "no_location") instead of
+  falling back to the env-level default coordinates. This prevents accidentally
+  checking in someone at the wrong site.
+  """
+  if not locations:
+    return default_payload, "default"
+
   loc = resolve_location(user, locations, user_locations, default_location)
   if loc:
     return build_payload_for_location(loc, default_payload.access_token), loc.name
-  return default_payload, "default"
+
+  return None, "no_location"
 
 
 def _handle_attendance_env(
@@ -248,6 +258,21 @@ def _handle_attendance_env(
 
   for idx, user in enumerate(usernames, 1):
     payload, loc_name = _resolve_payload(user, data, locations, user_locations, default_location)
+
+    if payload is None:
+      log.error("No location configured for %s in multi-location mode — skipping", user)
+      print_log(f"[red]{user} has no location configured in locations.yaml — skipping[/]", "ERROR")
+      results.append(
+        {
+          "username": user,
+          "location": loc_name,
+          "status": "failed",
+          "attempts": 0,
+          "detail": "no location configured in multi-location mode",
+        }
+      )
+      all_ok = False
+      continue
 
     if idempotent:
       # Refresh-once on TokenExpiredError so a stale token at run-start is

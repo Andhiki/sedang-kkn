@@ -1,15 +1,13 @@
-name: Daily KKN Attendance
+name: Proker Presensi
 
 on:
   schedule:
-    # 08:00 WIB = 01:00 UTC
-    - cron: "0 1 * * *"
-    # 20:00 WIB = 13:00 UTC
-    - cron: "0 13 * * *"
+    # 23:30 WIB = 16:30 UTC (after typical daily activities)
+    - cron: "30 16 * * *"
   workflow_dispatch:
 
 jobs:
-  attendance:
+  proker-presensi:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -31,13 +29,13 @@ jobs:
         run: |
           printf '%s' "${{ vars.LOCATIONS_YAML }}" > locations.yaml
 
-      - name: Run daily attendance
+      - name: Run proker presensi
         env:
           SIMASTER_USERNAME: ${{ secrets.SIMASTER_USERNAME }}
           SIMASTER_PASSWORD: ${{ secrets.SIMASTER_PASSWORD }}
           SIMASTER_CLIENT_ID: ${{ secrets.SIMASTER_CLIENT_ID }}
           SIMASTER_CLIENT_SECRET: ${{ secrets.SIMASTER_CLIENT_SECRET }}
-          USERNAMES: ${{ secrets.USERNAMES }}
+          SIMASTER_CREDENTIALS: ${{ secrets.SIMASTER_CREDENTIALS }}
           QR_CODE_VALUE: ${{ secrets.QR_CODE_VALUE }}
           KKN_LOCATION_LATITUDE: ${{ secrets.KKN_LOCATION_LATITUDE }}
           KKN_LOCATION_LONGITUDE: ${{ secrets.KKN_LOCATION_LONGITUDE }}
@@ -49,13 +47,13 @@ jobs:
           THROTTLE: "true"
           SHUFFLE: "true"
           MAX_RETRIES: "3"
-        run: uv run python src/main.py -s --headless --verify
+        run: uv run python src/main.py --proker_presensi --headless
 
-      - name: Upload reports
+      - name: Upload proker reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kkn-reports
+          name: kkn-proker-reports
           path: reports/
           retention-days: 7
           if-no-files-found: warn
@@ -64,7 +62,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: kkn-logs
+          name: kkn-proker-logs
           path: logs/
           retention-days: 7
           if-no-files-found: warn
