@@ -78,7 +78,15 @@ class KKN:
       resp = await self.client.get(logbook_url, follow_redirects=True)
       resp.raise_for_status()
 
-      if not (cookie := self.client.cookies.get("simasterUGM_cookie", None)):
+      # httpx.Cookies.get() raises CookieConflict if multiple cookies share the
+      # same name across domains. Iterate the jar manually to pick the one
+      # for simaster.ugm.ac.id.
+      cookie = None
+      for c in self.client.cookies.jar:
+        if c.name == "simasterUGM_cookie" and "simaster.ugm.ac.id" in (c.domain or ""):
+          cookie = c.value
+          break
+      if not cookie:
         print_log("Could not find 'simasterUGM_cookie' in the session after visiting the logbook page.")
         return None
 
@@ -222,9 +230,14 @@ class KKN:
           if link_node := cols[4].css_first("a[href*='logbook_kegiatan']"):
             kegiatan_url = link_node.attributes.get("href")
 
+          edit_url = None
+          if edit_node := cols[4].css_first("a[title='Ubah'], a[title='Edit']"):
+            edit_url = edit_node.attributes.get("href")
+
           current_entry: EntryData = {
             "entry_index": int(cols[0].text(strip=True)),
             "activity_url": str(kegiatan_url),
+            "edit_url": str(edit_url) if edit_url else None,
             "title": cols[1].text(strip=True),
             "date": cols[2].text(strip=True),
             "location": cols[3].text(strip=True),
@@ -241,6 +254,10 @@ class KKN:
           if presensi_node := content_node.css_first("span.pull-right a[ajaxify]"):
             attendance_link = presensi_node.attributes.get("ajaxify")
 
+          sub_edit_url = None
+          if sub_edit_node := content_node.css_first("a[title='Ubah'], a[title='Edit']"):
+            sub_edit_url = sub_edit_node.attributes.get("href")
+
           full_text = content_node.text().replace("\n", "").strip()
           if status_text := status_node.text(strip=True) if status_node else "Belum Presensi":
             full_text = full_text.replace(status_text, "").strip()
@@ -256,6 +273,7 @@ class KKN:
             "status": status_text,
             "is_attended": is_attended,
             "attendance_link": attendance_link,
+            "edit_url": str(sub_edit_url) if sub_edit_url else None,
           }
 
           current_entry["sub_entries"].append(sub_data)
@@ -355,30 +373,38 @@ class KKN:
       print_log(f"An unexpected error occurred in get_assisted_program: {e}", "ERROR")
       return None
 
-  async def add_logbook_entry(self, program_id: str, data: LogEntryPayload):
+  async def add_logbook_entry(self, program_id: str, data: LogEntryPayload, edit_url: str | None = None):
     if not self.main_program or not (target := self.main_program.get(program_id)):
       return None
 
-    url = target["action"]
-
     try:
-      resp = await self.client.get(url, follow_redirects=True)
-      resp.raise_for_status()
+      if edit_url:
+        resp = await self.client.get(edit_url, follow_redirects=True)
+        resp.raise_for_status()
 
-      tree = HTMLParser(resp.content)
-      if not (add_link_node := tree.css_first("a[title='Tambah']")):
-        print_log("Could not find 'Tambah' link on the RPP page.")
-        return False
+        tree = HTMLParser(resp.content)
+        if not (form := tree.css_first("form#form-usulan-program")):
+          print_log("Could not find the edit form on the page.")
+          return False
+      else:
+        url = target["action"]
+        resp = await self.client.get(url, follow_redirects=True)
+        resp.raise_for_status()
 
-      add_page_url = add_link_node.attributes.get("href")
-      assert add_page_url is not None
-      resp = await self.client.get(add_page_url, follow_redirects=True)
-      resp.raise_for_status()
+        tree = HTMLParser(resp.content)
+        if not (add_link_node := tree.css_first("a[title='Tambah']")):
+          print_log("Could not find 'Tambah' link on the RPP page.")
+          return False
 
-      tree = HTMLParser(resp.content)
-      if not (form := tree.css_first("form#form-usulan-program")):
-        print_log("Could not find the add form on the page.")
-        return False
+        add_page_url = add_link_node.attributes.get("href")
+        assert add_page_url is not None
+        resp = await self.client.get(add_page_url, follow_redirects=True)
+        resp.raise_for_status()
+
+        tree = HTMLParser(resp.content)
+        if not (form := tree.css_first("form#form-usulan-program")):
+          print_log("Could not find the add form on the page.")
+          return False
 
       action_url = form.attributes.get("action")
 
@@ -415,27 +441,36 @@ class KKN:
   # WARN:
   # Currently this function can only handle 1 source of fund, If your program have more than 1 fund source,
   # just edit it from SIMASTER
-  async def add_logbook_sub_entry(self, kegiatan_url: str, form_details: dict[str, str]) -> bool:
+  async def add_logbook_sub_entry(self, kegiatan_url: str, form_details: dict[str, str], edit_url: str | None = None) -> bool:
     try:
-      resp = await self.client.get(kegiatan_url, follow_redirects=True)
-      resp.raise_for_status()
+      if edit_url:
+        resp = await self.client.get(edit_url, follow_redirects=True)
+        resp.raise_for_status()
 
-      tree = HTMLParser(resp.content)
-      if not (add_link_node := tree.css_first("a[title='Tambah']")):
-        print_log("Couldn't find 'Tambah' link on the Kegiatan page.", "ERROR")
-        return False
+        tree = HTMLParser(resp.content)
+        if not (form := tree.css_first("form")):
+          print_log("Could not find the edit form.", "ERROR")
+          return False
+      else:
+        resp = await self.client.get(kegiatan_url, follow_redirects=True)
+        resp.raise_for_status()
 
-      if not (add_form_url := add_link_node.attributes.get("href")):
-        print_log("Couldn't find form url in the Node", "ERROR")
-        return False
+        tree = HTMLParser(resp.content)
+        if not (add_link_node := tree.css_first("a[title='Tambah']")):
+          print_log("Couldn't find 'Tambah' link on the Kegiatan page.", "ERROR")
+          return False
 
-      resp = await self.client.get(add_form_url, follow_redirects=True)
-      resp.raise_for_status()
+        if not (add_form_url := add_link_node.attributes.get("href")):
+          print_log("Couldn't find form url in the Node", "ERROR")
+          return False
 
-      tree = HTMLParser(resp.content)
-      if not (form := tree.css_first("form")):
-        print_log("Could not find the sub-entry form.", "ERROR")
-        return False
+        resp = await self.client.get(add_form_url, follow_redirects=True)
+        resp.raise_for_status()
+
+        tree = HTMLParser(resp.content)
+        if not (form := tree.css_first("form")):
+          print_log("Could not find the sub-entry form.", "ERROR")
+          return False
 
       if not (action_url := form.attributes.get("action")):
         print_log("Couldn't find action url in the Node", "ERROR")
@@ -447,6 +482,12 @@ class KKN:
         value = inp.attributes.get("value")
         if name:
           form_data[name] = value
+
+      if edit_url:
+        for inp in form.css("input[type='text'], input[type='number'], input[type='datetime-local'], textarea"):
+          name = inp.attributes.get("name")
+          if name:
+            form_data[name] = inp.attributes.get("value") or inp.text(strip=True)
 
       form_data.update(
         {

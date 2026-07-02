@@ -60,11 +60,13 @@ class SubEntryData(TypedDict, total=False):
   status: str
   is_attended: bool
   attendance_link: str | None
+  edit_url: str | None
 
 
 class EntryData(TypedDict, total=False):
   entry_index: int
   activity_url: str
+  edit_url: str | None
   title: str
   date: str
   location: str

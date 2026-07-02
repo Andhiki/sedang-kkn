@@ -3,9 +3,12 @@ import os
 
 import httpx
 from prompt_toolkit import HTML
+from rich.prompt import Prompt
 
+from datatypes import SubEntryData
 from ui.prompt import get_entry_details_from_user, get_sub_entry_details_from_user, parse_selection
 from ui.tables import print_assisted_program, print_program_details, print_program_title, print_unattended_program
+from ui.textual_table import run_program_table
 from ui.tui import console, print_log
 from utils.common import async_input, generate_random_points, load_background
 from utils.kkn import KKN
@@ -42,48 +45,108 @@ def _filter_unattended_program(data: dict | None, source: str = "assisted") -> l
 
 async def show_all_program(kkn: KKN):
   await load_background("[blue]Background fetch in progress...[/]", kkn.loader)
-  print_program_details(kkn.main_program)
-  print_assisted_program(kkn.assisted_program)
+  await print_program_details(kkn.main_program)
+  await print_assisted_program(kkn.assisted_program)
 
 
-async def add_new_entry(kkn: KKN):
+async def _select_program(kkn: KKN) -> str | None:
+  await print_program_title(kkn.main_program)
+  p_ids = list(kkn.main_program.keys())
+  if not p_ids:
+    print_log("No main programs found", "ERROR")
+    return None
+
+  try:
+    choice = await async_input(
+      HTML(
+        f'Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(p_ids)}</num>) '
+        f'<choice fg="ansimagenta">[{"/".join(str(i + 1) for i in range(len(p_ids)))}]</choice>: </delim>'
+      ),
+      int,
+    )
+  except ValueError:
+    print_log("Invalid program choice", "ERROR")
+    return None
+
+  if choice < 1 or choice > len(p_ids):
+    print_log("Invalid program choice", "ERROR")
+    return None
+
+  return p_ids[choice - 1]
+
+
+async def manage_entry(kkn: KKN):
   await load_background("[blue]Background fetch in progress...[/]", kkn.loader)
 
-  print_program_title(kkn.main_program)
-  p_ids = list(kkn.main_program.keys())
+  p_id = await _select_program(kkn)
+  if not p_id:
+    return
 
-  choice = await async_input(
-    HTML(
-      f'Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(p_ids)}</num>) '
-      f'<choice fg="ansimagenta">[{"/".join(str(i + 1) for i in range(len(p_ids)))}]</choice>: </delim>'
-    ),
-    int,
+  selection = await run_program_table({p_id: kkn.main_program[p_id]}, title="Program Utama")
+  if not selection:
+    return
+
+  if selection.get("_type") == "sub_entry":
+    print_log("Please select a top-level entry row (not a sub-entry) for this menu.", "WARN")
+    return
+
+  mode = Prompt.ask("Mode: (e)dit existing, (a)dd new, (c)ancel", choices=["e", "a", "c"], default="a")
+  if mode == "c":
+    return
+
+  edit_url = None
+  if mode == "e":
+    edit_url = selection.get("edit_url")
+    if not edit_url:
+      print_log("No edit URL available for this entry (may be locked).", "ERROR")
+      return
+
+  data = get_entry_details_from_user(
+    kkn.main_program[p_id],
+    edit_mode=(mode == "e"),
+    existing=selection,
   )
-
-  p_id = p_ids[choice - 1]
-  if data := get_entry_details_from_user(kkn.main_program[p_id]):
-    await kkn.add_logbook_entry(p_id, data)
+  if data:
+    await kkn.add_logbook_entry(p_id, data, edit_url=edit_url)
     kkn.loader = asyncio.create_task(kkn.update_logbook_entries(programs=[p_id]))
 
 
-async def add_new_sub_entry(kkn: KKN):
+async def manage_sub_entry(kkn: KKN):
   await load_background("[blue]Background fetch in progress...[/]", kkn.loader)
 
-  print_program_title(kkn.main_program)
-  p_ids = list(kkn.main_program.keys())
+  p_id = await _select_program(kkn)
+  if not p_id:
+    return
 
-  choice = await async_input(
-    HTML(
-      f'Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>{len(p_ids)}</num>) '
-      f'<choice fg="ansimagenta">[{"/".join(str(i + 1) for i in range(len(p_ids)))}]</choice>: </delim>'
-    ),
-    int,
-  )
+  selection = await run_program_table({p_id: kkn.main_program[p_id]}, title="Program Utama")
+  if not selection:
+    return
 
-  p_id = p_ids[choice - 1]
+  if selection.get("_type") != "sub_entry":
+    print_log("Please select a sub-entry row for this menu.", "WARN")
+    return
+
+  mode = Prompt.ask("Mode: (e)dit existing, (a)dd new, (c)ancel", choices=["e", "a", "c"], default="a")
+  if mode == "c":
+    return
+
+  entry = selection.get("_entry")
+  edit_url = None
+  if mode == "e":
+    edit_url = selection.get("edit_url")
+    if not edit_url:
+      print_log("No edit URL available for this sub-entry (may be locked).", "ERROR")
+      return
+
   try:
-    if result := get_sub_entry_details_from_user(kkn.main_program[p_id]):
-      await kkn.add_logbook_sub_entry(result[0], result[1])
+    result = get_sub_entry_details_from_user(
+      kkn.main_program[p_id],
+      edit_mode=(mode == "e"),
+      entry=entry,
+      existing_sub=selection,  # type: ignore[arg-type]
+    )
+    if result:
+      await kkn.add_logbook_sub_entry(result[0] or "", result[1], edit_url=edit_url)
       kkn.loader = asyncio.create_task(kkn.update_logbook_entries(programs=[p_id], pool_size=2))
   except KeyboardInterrupt:
     return
@@ -113,7 +176,7 @@ async def handle_unattended_entries(kkn: KKN):
     print_log("No unattended programs found!")
     return
 
-  print_unattended_program(unattended)
+  await print_unattended_program(unattended)
   indices = await async_input(
     HTML(
       'Enter indices to process <delim fg="#89dceb">(<num fg="#a6e3a1">"1 2 3"<dash fg="#89dceb"> or </dash>"1-4"</num>): </delim>'

@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 
 from rich import box
@@ -9,7 +10,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 import utils.generative as gen
-from datatypes import LogEntryPayload, RPPData
+from datatypes import EntryData, LogEntryPayload, RPPData, SubEntryData
 from ui.tables import print_program_entries, print_program_sub_entries
 from ui.tui import console, print_log
 from utils.common import generate_random_points
@@ -36,21 +37,39 @@ def parse_selection(input_str: str) -> list[int]:
   return sorted(list(selected))
 
 
-def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
+def get_entry_details_from_user(
+  data: RPPData, edit_mode: bool = False, existing: dict | None = None
+) -> LogEntryPayload | None:
   console.print(f"\nCurrent entries for [bold blue]{data['title']}")
   print_program_entries(data)
 
-  entry_title = Prompt.ask("Enter the title for the new logbook entry (Kegiatan)")
-  default_date = datetime.now().strftime("%Y-%m-%d")
+  default_title = existing.get("title", "") if (edit_mode and existing) else ""
+  default_date = (
+    existing.get("date", datetime.now().strftime("%Y-%m-%d"))
+    if (edit_mode and existing)
+    else datetime.now().strftime("%Y-%m-%d")
+  )
+
+  prompt_text = "Enter the title for the logbook entry (Kegiatan)"
+  entry_title = Prompt.ask(prompt_text, default=default_title)
   activity_datetime = Prompt.ask("Enter date (YYYY-MM-DD)", default=default_date)
 
   default_lat = os.getenv("KKN_LOCATION_LATITUDE", "0.0")
   default_long = os.getenv("KKN_LOCATION_LONGITUDE", "0.0")
-  console.print(f"[blue]Generated random point: [yellow]([#fab387]{default_lat}[#89dceb],[/] {default_long}[/])[/]")
-  use_coord = Confirm.ask("Use default location?", default=True)
 
   latitude = float(default_lat)
   longitude = float(default_long)
+  if edit_mode and existing and (loc := existing.get("location")):
+    parts = loc.split(",")
+    if len(parts) == 2:
+      try:
+        latitude = float(parts[0].strip())
+        longitude = float(parts[1].strip())
+      except ValueError:
+        pass
+
+  console.print(f"[blue]Current/default point: [yellow]([#fab387]{latitude}[#89dceb],[/] {longitude}[/])[/]")
+  use_coord = Confirm.ask("Use this location?", default=True)
 
   if not use_coord:
     try:
@@ -75,7 +94,8 @@ def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
   form_data.add_row("Location", location)
 
   console.print(form_data)
-  confirm = Confirm.ask("Do you want to add this entry?", default=True)
+  confirm_text = "Do you want to update this entry?" if edit_mode else "Do you want to add this entry?"
+  confirm = Confirm.ask(confirm_text, default=True)
 
   if not confirm:
     console.print("Operation cancelled.")
@@ -86,53 +106,101 @@ def get_entry_details_from_user(data: RPPData) -> LogEntryPayload | None:
   return {"title": entry_title, "date": activity_datetime, "longitude": longitude, "latitude": latitude}
 
 
-def get_sub_entry_details_from_user(data: RPPData):
+def _parse_duration(value: str) -> str:
+  match = re.search(r"\d+", value)
+  return match.group(0) if match else "60"
+
+
+def _parse_datetime(value: str) -> tuple[str, str]:
+  """Return (date, time) from strings like '2025-07-02 09:00'."""
+  now = datetime.now()
+  default_date = now.strftime("%Y-%m-%d")
+  default_time = now.strftime("%H:%M")
+  parts = value.strip().split()
+  if len(parts) >= 2:
+    return parts[0], parts[1]
+  if len(parts) == 1:
+    if ":" in parts[0]:
+      return default_date, parts[0]
+    return parts[0], default_time
+  return default_date, default_time
+
+
+def get_sub_entry_details_from_user(
+  data: RPPData,
+  edit_mode: bool = False,
+  entry: EntryData | None = None,
+  existing_sub: SubEntryData | None = None,
+):
   program_title = data["title"]
-  console.print(f"\nCurrent entries for [bold blue]{data['title']}")
-  print_program_entries(data)
 
-  length = len(data["entries"])
-  choice = int(
-    Prompt.ask(
-      f"Enter your choice [#89dceb]([#fab387]1[#89dceb]-[/]{length}[/])[/]",
-      choices=[str(i + 1) for i in range(length)],
+  if edit_mode and entry:
+    sub_entry = entry
+    console.print(f"\nEditing sub-entry under [bold blue]{sub_entry['title']}")
+    print_program_sub_entries(sub_entry)
+  else:
+    console.print(f"\nCurrent entries for [bold blue]{data['title']}")
+    print_program_entries(data)
+
+    length = len(data["entries"])
+    choice = int(
+      Prompt.ask(
+        f"Enter your choice [#89dceb]([#fab387]1[#89dceb]-[/]{length}[/])[/]",
+        choices=[str(i + 1) for i in range(length)],
+      )
     )
+
+    sub_entry = data["entries"][choice - 1]
+    console.print(f"\nCurrent sub-entries for [bold blue]{sub_entry['title']}")
+    print_program_sub_entries(sub_entry)
+
+  defaults = {}
+  if edit_mode and existing_sub:
+    existing_date, existing_time = _parse_datetime(existing_sub.get("date", ""))
+    defaults = {
+      "title": existing_sub.get("title", ""),
+      "duration": _parse_duration(existing_sub.get("duration", "60")),
+      "date": existing_date,
+      "time": existing_time,
+      "target": "-",
+      "audience": "0",
+      "budget": "0",
+      "description": "",
+      "result": "",
+    }
+
+  sub_entry_title = Prompt.ask(
+    "Enter the title for the logbook sub-entry (Kegiatan)", default=defaults.get("title", "")
   )
-
-  sub_entry = data["entries"][choice - 1]
-  console.print(f"\nCurrent sub-entries for [bold blue]{sub_entry['title']}")
-  print_program_sub_entries(sub_entry)
-
-  sub_entry_title = Prompt.ask("Enter the title for the new logbook sub-entry (Kegiatan)")
-  duration = Prompt.ask("Enter the duration in minutes", default="60")
+  duration = Prompt.ask("Enter the duration in minutes", default=defaults.get("duration", "60"))
 
   activity_datetime = datetime.now().strftime("%Y-%m-%d %H:%M")
-  target = "-"
-  audience = "0"
-  budget = "0"
+  target = defaults.get("target", "-")
+  audience = defaults.get("audience", "0")
+  budget = defaults.get("budget", "0")
 
   fill_details = Confirm.ask(
     "Do you want to fill in additional details (date, time, participants, etc.)?", default=False
   )
 
-  if fill_details:
-    default_date = datetime.now().strftime("%Y-%m-%d")
-    default_time = datetime.now().strftime("%H:%M")
+  if fill_details or edit_mode:
+    default_date = defaults.get("date", datetime.now().strftime("%Y-%m-%d"))
+    default_time = defaults.get("time", datetime.now().strftime("%H:%M"))
 
     date_input = Prompt.ask("Enter date (YYYY-MM-DD)", default=default_date)
     time_input = Prompt.ask("Enter time (HH:MM)", default=default_time)
 
     activity_datetime = f"{date_input} {time_input}"
-    target = Prompt.ask("Enter target audience (sasaran)", default="-")
-    audience = Prompt.ask("Enter number of participants (jumlah peserta)", default="0")
-    budget = Prompt.ask("Enter amount of funds (jumlah dana)", default="0")
+    target = Prompt.ask("Enter target audience (sasaran)", default=target)
+    audience = Prompt.ask("Enter number of participants (jumlah peserta)", default=audience)
+    budget = Prompt.ask("Enter amount of funds (jumlah dana)", default=budget)
 
-  description = ""
-  result = "Kegiatan terlaksana dengan baik."
-  jok = 2 * int(audience) * 20_000
+  description = defaults.get("description", "")
+  result = defaults.get("result", "Kegiatan terlaksana dengan baik.")
+  jok = int(int(audience) * (int(duration) / 60) * 20_000)
 
   use_ai = False
-  if gen.is_generative_ai_available():
+  if gen.is_generative_ai_available() and not (edit_mode and description):
     use_ai = Confirm.ask("[blue]󰫢 [/]Gemini AI is available. Generate description and results?", default=False)
 
   if use_ai:
@@ -167,7 +235,7 @@ def get_sub_entry_details_from_user(data: RPPData):
         else:
           description, result = generated_desc, generated_result
           break
-  else:
+  elif not description:
     description = input("\nEnter Acticity Description: ")
     result = input("Enter Activity Result: ")
 
@@ -187,20 +255,23 @@ def get_sub_entry_details_from_user(data: RPPData):
   form_data.add_row("Result", result)
 
   console.print(form_data)
-  confirm = Confirm.ask("Do you want to add this entry?", default=True)
+  confirm_text = "Do you want to update this entry?" if edit_mode else "Do you want to add this entry?"
+  confirm = Confirm.ask(confirm_text, default=True)
 
   if not confirm:
     console.print("Operation cancelled.")
     return
 
-  return sub_entry["activity_url"], {
-    "title": sub_entry_title,  # judul
-    "datetime": activity_datetime,  # pelaksanaan
-    "duration": int(duration),  # durasi
-    "target": target,  # sasaran
-    "jok": jok,  # jok
-    "audience": audience,  # jumPeserta
-    "description": description,  # deskripsi
-    "budget": budget,  # jumDana
-    "result": result,  # hasilKegiatan
+  return_url = sub_entry.get("activity_url") if sub_entry else None
+
+  return return_url, {
+    "title": sub_entry_title,
+    "datetime": activity_datetime,
+    "duration": int(duration),
+    "target": target,
+    "jok": jok,
+    "audience": audience,
+    "description": description,
+    "budget": budget,
+    "result": result,
   }

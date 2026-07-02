@@ -60,9 +60,9 @@ async def main_async(username: str, password: str):
       elif choice == "2":
         await actions.show_all_program(kkn_manager)
       elif choice == "3":
-        await actions.add_new_entry(kkn_manager)
+        await actions.manage_entry(kkn_manager)
       elif choice == "4":
-        await actions.add_new_sub_entry(kkn_manager)
+        await actions.manage_sub_entry(kkn_manager)
       elif choice == "5":
         await actions.handle_unattended_entries(kkn_manager)
         pass

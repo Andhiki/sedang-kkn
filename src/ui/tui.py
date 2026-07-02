@@ -50,10 +50,10 @@ def print_title():
 
 def print_choice():
   options = [
-    "Post Daily Attendance",  # done
-    "Show Programs",  # done
-    "Add New Logbook Entry (My Program)",  # hook this
-    "Add New Sub-Entry (My Program)",  # test this
+    "Post Daily Attendance",
+    "Show Programs",
+    "Manage Logbook Entry (My Program)",
+    "Manage Sub-Entry (My Program)",
     "Post Attendance for Unattended Entries",
     "Generate Activity Timeline",
     "Change Account",
