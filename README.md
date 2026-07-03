@@ -61,24 +61,35 @@ cd kkn-automation
    Copy the template below into your `.env` or see [example](./.env.example).
 
 ```sh
-# QR Code Location Value (Required)
-QR_CODE_VALUE=the_qr_value
+# SIMASTER credentials (Required)
+SIMASTER_USERNAME=username
+SIMASTER_PASSWORD=password
 
-# KKN Location Settings (Required)
+# SIMASTER VNEXT OAuth client credentials (Required)
+SIMASTER_CLIENT_ID=your_client_id
+SIMASTER_CLIENT_SECRET=your_client_secret
+SIMASTER_REDIRECT_URI=id.ac.ugm.student.vnext.simaster://oauth2
+
+# AI provider (optional — used for logbook/report drafting)
+AI_PROVIDER=ollama
+OLLAMA_API_KEY=your_ollama_key
+OLLAMA_MODEL=deepseek-v4-flash
+
+# Single-location fallback (only used when locations.yaml is absent)
+QR_CODE_VALUE=the_qr_value
 KKN_LOCATION_LATITUDE=-7.9547226
 KKN_LOCATION_LONGITUDE=110.2788225
 KKN_LOCATION_RADIUS_METERS=50
 
-# A comma separated value for multiple usernames
+# Comma-separated usernames (only used as fallback when locations.yaml is absent)
 USERNAMES=a,b,c,d
-
-# SIMASTER credentials (Optional)
-SIMASTER_USERNAME=username
-SIMASTER_PASSWORD=password
 
 # Gemini API Key (Optional)
 GEMINI_API_KEY=
 ```
+
+For groups spread across multiple desa, use `locations.yaml` instead of the
+single-location env vars above. See [Multi-location check-in](#multi-location-check-in).
 
 5. Run `main.py`
 
@@ -153,6 +164,11 @@ Each user is checked into their assigned location. Users not in `user_locations`
 fall back to `default_location`. If no `locations.yaml` exists, the tool uses the
 single `QR_CODE_VALUE` + `KKN_LOCATION_*` env vars for everyone.
 
+**CI behavior:** GitHub Actions now requires `LOCATIONS_YAML` (repository variable).
+The single-location env vars are no longer passed to the workflows; if a user is
+missing from `LOCATIONS_YAML` and there is no `default_location`, that user is
+**failed, not silently checked in elsewhere**.
+
 ### Testing & safeguards
 
 - **`--dry_run`** — logs in, checks idempotency, resolves each user's location,
@@ -161,6 +177,10 @@ single `QR_CODE_VALUE` + `KKN_LOCATION_*` env vars for everyone.
   `✓ alice@desa_a  ✗ bob@desa_b (3 retries)  – charlie (skipped: already present)`.
 - **`reports/result.json`** — machine-readable per-user result:
   `{username, location, status, attempts, verified, checked_in_at}`.
+- **Soft-failure detection** — SIMASTER sometimes redirects an unknown username
+  or bad QR code to a "Page Not Found" page while returning HTTP 200. The tool
+  inspects the final URL/body and reports that user as failed instead of
+  incorrectly counting them as checked in.
 - **`--verify`** — after `--submit`, re-checks each user's active session to
   confirm the check-in actually registered.
 - **Bounded retries** — `MAX_RETRIES` (default 3) with exponential backoff
@@ -178,18 +198,18 @@ To use it on your fork:
 
 1. Fork this repo to your GitHub account.
 2. In the fork, go to **Settings → Secrets and variables → Actions** and add:
-   - `SIMASTER_USERNAME`, `SIMASTER_PASSWORD` (operator creds for check-in token)
-   - `USERNAMES` (comma-separated, include yourself)
-   - `QR_CODE_VALUE`, `KKN_LOCATION_LATITUDE`, `KKN_LOCATION_LONGITUDE`, `KKN_LOCATION_RADIUS_METERS`
-   - `SIMASTER_CREDENTIALS` — JSON `{"alice":"pass1","bob":"pass2"}` (for group reports)
-   - `AI_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`, `OLLAMA_MODEL`
-   - `GDRIVE_SERVICE_ACCOUNT_JSON` — full service-account JSON (for Drive upload)
-   - `GDRIVE_FOLDER_ID` — shared Drive folder ID
-3. (Optional) Add `LOCATIONS_YAML` as a **variable** (not secret) in
-   **Settings → Secrets and variables → Variables** if using multi-location.
-4. Enable Actions in the fork's **Actions** tab.
-5. The schedule fires daily. You can also trigger it manually via
-   **Run workflow** in the Actions tab.
+    - `LOCATIONS_YAML` — add as a **repository variable** (not secret) with the full
+      `locations.yaml` content (see [`locations.example.yaml`](./locations.example.yaml)).
+    - `SIMASTER_USERNAME`, `SIMASTER_PASSWORD` (operator creds for the check-in token)
+    - `SIMASTER_CLIENT_ID`, `SIMASTER_CLIENT_SECRET`, `SIMASTER_REDIRECT_URI`
+    - `SIMASTER_CREDENTIALS` — JSON `{"alice":"pass1","bob":"pass2"}` (for group reports / proker presensi)
+    - `OLLAMA_API_KEY`
+    - `GEMINI_API_KEY` — only if using `AI_PROVIDER=gemini`
+    - `GDRIVE_SERVICE_ACCOUNT_JSON` — full service-account JSON (for Drive upload)
+    - `GDRIVE_FOLDER_ID` — shared Drive folder ID
+3. Enable Actions in the fork's **Actions** tab.
+4. The schedule fires daily. You can also trigger it manually via
+    **Run workflow** in the Actions tab.
 
 Your laptop does **not** need to be on — GitHub runs it in the cloud.
 
@@ -214,6 +234,8 @@ laptop was asleep at 10:00, the job runs shortly after you wake it.
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `LOCATIONS_FILE` | `locations.yaml` | Path to multi-location config |
+| `LOCATIONS` | — | Inline JSON alternative to `locations.yaml` |
 | `IDEMPOTENT` | `true` | Skip check-in if user already has an active session |
 | `THROTTLE` | `false` | Random 0–5s delay between usernames |
 | `SHUFFLE` | `true` | Shuffle the check-in order |
@@ -224,7 +246,8 @@ laptop was asleep at 10:00, the job runs shortly after you wake it.
 | `OLLAMA_API_KEY` | — | Bearer token for Ollama Cloud |
 | `OLLAMA_MODEL` | `qwen2.5` | Model name for drafting + report narrative |
 | `GEMINI_API_KEY` | — | Google Gemini API key (alternative provider) |
-| `SIMASTER_CREDENTIALS` | — | JSON `{"user":"pass"}` for group reports |
+| `SIMASTER_CREDENTIALS` | — | JSON `{"user":"pass"}` for group reports / proker presensi |
+| `CREDENTIALS_FILE` | `credentials.json` | Local JSON fallback for `SIMASTER_CREDENTIALS` |
 | `GDRIVE_SERVICE_ACCOUNT_JSON` | — | Full service-account JSON for Drive upload |
 | `GDRIVE_FOLDER_ID` | — | Shared Drive folder ID for report storage |
 
