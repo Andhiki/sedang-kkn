@@ -55,8 +55,10 @@ def _sum_program_hours(data) -> float:
     return total
   for value in data.values():
     entries = value if isinstance(value, list) else value.get("entries", [])
+    if not entries:
+      continue
     for entry in entries:
-      for sub in entry.get("sub_entries", []):
+      for sub in entry.get("sub_entries", []) or []:
         total += _parse_duration_hours(sub.get("duration", "N/A"))
   return total
 
