@@ -37,11 +37,6 @@ jobs:
           SIMASTER_PASSWORD: ${{ secrets.SIMASTER_PASSWORD }}
           SIMASTER_CLIENT_ID: ${{ secrets.SIMASTER_CLIENT_ID }}
           SIMASTER_CLIENT_SECRET: ${{ secrets.SIMASTER_CLIENT_SECRET }}
-          USERNAMES: ${{ secrets.USERNAMES }}
-          QR_CODE_VALUE: ${{ secrets.QR_CODE_VALUE }}
-          KKN_LOCATION_LATITUDE: ${{ secrets.KKN_LOCATION_LATITUDE }}
-          KKN_LOCATION_LONGITUDE: ${{ secrets.KKN_LOCATION_LONGITUDE }}
-          KKN_LOCATION_RADIUS_METERS: ${{ secrets.KKN_LOCATION_RADIUS_METERS }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
           AI_PROVIDER: "ollama"
