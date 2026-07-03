@@ -85,7 +85,9 @@ def check_in(username: str, data: CheckInPayload):
     "Authorization": f"Bearer {data.access_token}",
   }
 
-  client = httpx.Client()
+  # Follow redirects so we can inspect the final URL/body for soft failures
+  # (e.g. SIMASTER redirects unknown usernames to /ugmfw-error/notfound.php).
+  client = httpx.Client(follow_redirects=True)
   with console.status(
     f"[blue]Checking in for [#89dceb]{username}[/]...", spinner="dots", spinner_style="#89dceb"
   ) as status:
@@ -105,16 +107,26 @@ def check_in(username: str, data: CheckInPayload):
       log.error("Check-in request failed for %s: %s", username, e)
       return False
 
-  if resp.status_code == 200:
+  final_url = str(resp.url).lower()
+  body = resp.text or ""
+  is_notfound = resp.status_code == 200 and ("notfound" in final_url or "page not found" in body.lower())
+  is_success = resp.status_code == 200 and not is_notfound
+
+  if is_success:
     print_log(f"Succesfully checked-in as [bold #89dceb]{username}[/]!", "SUCCESS")
     log.info("Checked in successfully as %s", username)
     return True
-  else:
-    print_log(f"Status Code {resp.status_code}", "ERROR")
-    log.error("Check-in for %s returned status %s: %s", username, resp.status_code, resp.text[:200])
-    if resp.status_code == 401 and "TOKEN_EXPIRED" in resp.text:
-      raise TokenExpiredError(f"Token expired for {username}")
-    return False
+
+  print_log(f"Status Code {resp.status_code}", "ERROR")
+  log.error("Check-in for %s returned status %s (final_url=%s): %s", username, resp.status_code, final_url[:120], body[:200])
+
+  if resp.status_code == 401 and "TOKEN_EXPIRED" in body:
+    raise TokenExpiredError(f"Token expired for {username}")
+
+  if is_notfound:
+    print_log(f"[red]{username} likely invalid username or checkpoint QR not found[/]")
+    log.error("Check-in failed for %s: redirected to notfound page", username)
+  return False
 
 
 def check_active_session(username: str, access_token: str):
