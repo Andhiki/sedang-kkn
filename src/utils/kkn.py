@@ -425,10 +425,12 @@ class KKN:
 
       resp_json = resp.json()
       if resp_json.get("status") == "success":
-        print_log(f"Added logbook entry: {resp_json.get('msg')}", "SUCCESS")
+        action_label = "Updated" if edit_url else "Added"
+        print_log(f"{action_label} logbook entry: {resp_json.get('msg')}", "SUCCESS")
         return True
       else:
-        print_log(f"Failed to add logbook entry: {resp_json.get('msg')}", "ERROR")
+        action_label = "update" if edit_url else "add"
+        print_log(f"Failed to {action_label} logbook entry: {resp_json.get('msg')}", "ERROR")
         return False
 
     except httpx.RequestError as e:
