@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import random
@@ -129,7 +130,7 @@ def check_in(username: str, data: CheckInPayload):
   return False
 
 
-def check_active_session(username: str, access_token: str):
+async def check_active_session(username: str, access_token: str):
   header: RequestHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
@@ -137,30 +138,44 @@ def check_active_session(username: str, access_token: str):
   }
 
   url = f"{BASE_URL}/get_active_session/{username}"
-  resp = requests.get(url, headers=header)
+  try:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+      resp = await client.get(url, headers=header)
+  except httpx.RequestError as e:
+    log.warning("active_session check failed for %s: %s — proceeding", username, e)
+    return None
 
   if resp.status_code == 200:
-    data = resp.json()
+    try:
+      data = resp.json()
+    except ValueError:
+      log.warning("active_session returned non-JSON 200 for %s: %s", username, resp.text[:120])
+      return None
+    log_id = data.get("check_point_log_id")
+    if log_id is None:
+      return None
     return {
-      "id": data["check_point_log_id"],
-      "location": data["check_point_nama"],
-      "time": data["check_point_log_check_in"],
+      "id": log_id,
+      "location": data.get("check_point_nama"),
+      "time": data.get("check_point_log_check_in"),
     }
 
   if resp.status_code == 401 and "TOKEN_EXPIRED" in resp.text:
     raise TokenExpiredError(f"Token expired during active_session check for {username}")
 
+  # 404 ACTIVE_SESSION_NOT_FOUND = not checked in today → None
+  # Other non-200 → also None (proceed to check-in)
   return None
 
 
-def _is_already_checked_in(username: str, access_token: str) -> bool:
+async def _is_already_checked_in(username: str, access_token: str) -> bool:
   """Idempotency check: skip check-in if the user has an active session today.
 
   Lets TokenExpiredError propagate so the caller can refresh and retry;
   other unexpected errors fall back to "not checked in" so we proceed with check-in.
   """
   try:
-    return check_active_session(username, access_token) is not None
+    return (await check_active_session(username, access_token)) is not None
   except TokenExpiredError:
     raise
   except Exception as e:
@@ -224,7 +239,7 @@ def _resolve_payload(
   return None, "no_location"
 
 
-def _handle_attendance_env(
+async def _handle_attendance_env(
   data: CheckInPayload,
   func: Callable,
   headless: bool = False,
@@ -291,7 +306,7 @@ def _handle_attendance_env(
       # refreshed before the first check-in attempt instead of wasting a POST.
       already_in = None
       try:
-        already_in = _is_already_checked_in(user, payload.access_token)
+        already_in = await _is_already_checked_in(user, payload.access_token)
       except TokenExpiredError:
         if refresh_token_fn is not None:
           new_token = refresh_token_fn()
@@ -300,7 +315,7 @@ def _handle_attendance_env(
             payload.access_token = new_token
             log.info("Token refreshed for %s during idempotency check; retrying", user)
             try:
-              already_in = _is_already_checked_in(user, payload.access_token)
+              already_in = await _is_already_checked_in(user, payload.access_token)
             except TokenExpiredError:
               log.warning("Token still expired for %s after refresh; proceeding to check-in", user)
               already_in = False
@@ -353,7 +368,7 @@ def _handle_attendance_env(
       # TokenExpiredError so verify never aborts the whole multi-user run.
       session = None
       try:
-        session = check_active_session(user, payload.access_token)
+        session = await check_active_session(user, payload.access_token)
       except TokenExpiredError:
         if refresh_token_fn is not None:
           new_token = refresh_token_fn()
@@ -361,7 +376,7 @@ def _handle_attendance_env(
             payload.access_token = new_token
             log.info("Token refreshed for %s during verify; retrying active_session", user)
             try:
-              session = check_active_session(user, payload.access_token)
+              session = await check_active_session(user, payload.access_token)
             except TokenExpiredError:
               log.warning("Token still expired for %s after refresh during verify", user)
               session = None
@@ -549,19 +564,21 @@ def handle_attendance(
     ok, _ = _handle_attendance_manual(data, func)
     return ok
   else:
-    ok, _ = _handle_attendance_env(
-      data,
-      func,
-      headless=headless,
-      idempotent=idempotent,
-      dry_run=dry_run,
-      verify=verify,
-      refresh_token_fn=_refresh_token_fn,
+    ok, _ = asyncio.run(
+      _handle_attendance_env(
+        data,
+        func,
+        headless=headless,
+        idempotent=idempotent,
+        dry_run=dry_run,
+        verify=verify,
+        refresh_token_fn=_refresh_token_fn,
+      )
     )
     return ok
 
 
-def handle_check_status(username: str, password: str) -> bool:
+async def handle_check_status(username: str, password: str) -> bool:
   login_result = _complete_oauth_flow_with_retry(username, password)
 
   if not login_result["success"]:
@@ -596,7 +613,7 @@ def handle_check_status(username: str, password: str) -> bool:
     current_token = access_token
     while True:
       try:
-        data = check_active_session(user, current_token)
+        data = await check_active_session(user, current_token)
         break
       except TokenExpiredError:
         new_token = _refresh_status_token()

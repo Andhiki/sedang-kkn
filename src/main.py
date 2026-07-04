@@ -132,7 +132,7 @@ def main() -> int:
         ok = ok and ok_proker
       return 0 if ok else 1
     elif args.check:
-      ok = handle_check_status(username, password)
+      ok = asyncio.run(handle_check_status(username, password))
       return 0 if ok else 1
     elif args.report:
       ok = _generate_report_headless(username, password)
