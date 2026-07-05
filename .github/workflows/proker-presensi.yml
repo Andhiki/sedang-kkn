@@ -2,8 +2,10 @@ name: Proker Presensi
 
 on:
   schedule:
-    # 23:05 WIB = 16:05 UTC (after typical daily activities)
-    - cron: "5 16 * * *"
+    # 22:00 WIB = 15:00 UTC
+    - cron: "0 15 * * *"
+    # 23:00 WIB = 16:00 UTC
+    - cron: "0 16 * * *"
   workflow_dispatch:
 
 jobs:

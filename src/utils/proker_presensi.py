@@ -3,7 +3,7 @@ import os
 import random
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from rich.table import Table
@@ -48,7 +48,7 @@ def _parse_sub_entry_start(date_str: str) -> datetime | None:
   if not month:
     return None
   try:
-    return datetime(int(year), month, int(day), int(hour), int(minute))
+    return datetime(int(year), month, int(day), int(hour), int(minute), tzinfo=timezone(timedelta(hours=7)))
   except ValueError:
     return None
 
@@ -61,9 +61,14 @@ def _is_future_sub_entry(item: dict, now: datetime) -> bool:
   return start > now
 
 
+def _now_wib() -> datetime:
+  """Return current datetime in WIB (UTC+7)."""
+  return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=7)))
+
+
 def _filter_future_sub_entries(unattended: list[dict], now: datetime | None = None) -> tuple[list[dict], int]:
   """Remove sub-entries whose start time is in the future. Returns (filtered, skipped_count)."""
-  now = now or datetime.now()
+  now = now or _now_wib()
   filtered = []
   skipped = 0
   for item in unattended:
