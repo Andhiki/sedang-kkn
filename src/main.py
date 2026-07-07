@@ -1,4 +1,5 @@
 import asyncio
+import getpass
 import os
 import sys
 
@@ -116,9 +117,7 @@ def main() -> int:
     print_title()
 
   username = os.getenv("SIMASTER_USERNAME") or prompt_session.prompt(HTML('Username<delim fg="#89dceb">:</delim> '))
-  password = os.getenv("SIMASTER_PASSWORD") or prompt_session.prompt(
-    HTML('Password<delim fg="#89dceb">:</delim> '), is_password=True
-  )
+  password = os.getenv("SIMASTER_PASSWORD") or getpass.getpass(str(HTML('Password<delim fg="#89dceb">:</delim> ')))
 
   try:
     if args.submit:
