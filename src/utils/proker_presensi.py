@@ -3,7 +3,7 @@ import os
 import random
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from rich.table import Table
@@ -66,6 +66,19 @@ def _now_wib() -> datetime:
   return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=7)))
 
 
+def _today_wib() -> date:
+  """Return today's date in WIB (UTC+7)."""
+  return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=7))).date()
+
+
+def _is_today_sub_entry(item: dict, today: date) -> bool:
+  """Return True if the sub-entry's start date matches `today` (WIB)."""
+  start = _parse_sub_entry_start(item.get("date", ""))
+  if not start:
+    return False
+  return start.date() == today
+
+
 def _filter_future_sub_entries(unattended: list[dict], now: datetime | None = None) -> tuple[list[dict], int]:
   """Remove sub-entries whose start time is in the future. Returns (filtered, skipped_count)."""
   now = now or _now_wib()
@@ -77,6 +90,19 @@ def _filter_future_sub_entries(unattended: list[dict], now: datetime | None = No
       continue
     filtered.append(item)
   return filtered, skipped
+
+
+def _filter_to_today(unattended: list[dict], today: date | None = None) -> tuple[list[dict], int]:
+  """Keep only sub-entries scheduled for today (WIB). Returns (filtered, dropped_count)."""
+  today = today or _today_wib()
+  filtered = []
+  dropped = 0
+  for item in unattended:
+    if _is_today_sub_entry(item, today):
+      filtered.append(item)
+    else:
+      dropped += 1
+  return filtered, dropped
 
 
 def _write_result_json(results: list[dict]):
@@ -195,11 +221,18 @@ async def _process_single_user(
     unattended_assisted = _filter_unattended_program(kkn.assisted_program, source="assisted")
     unattended = [*unattended_main, *unattended_assisted]
 
-    # Skip sub-entries scheduled in the future so we don't post attendance before the activity starts.
-    unattended, skipped_future = _filter_future_sub_entries(unattended)
-
-    if skipped_future:
-      log.info("Skipped %d future sub-entries for %s", skipped_future, username)
+    # Filter sub-entries based on configured mode.
+    # - time_aware (default): skip future sub-entries, post all past+today unattended.
+    # - today: keep only today's sub-entries (WIB date), drop all other days.
+    filter_mode = os.getenv("PRESENSI_FILTER_MODE", "time_aware").lower().strip()
+    if filter_mode == "today":
+      unattended, dropped_other_days = _filter_to_today(unattended)
+      if dropped_other_days:
+        log.info("Dropped %d sub-entries not scheduled for today for %s", dropped_other_days, username)
+    else:
+      unattended, skipped_future = _filter_future_sub_entries(unattended)
+      if skipped_future:
+        log.info("Skipped %d future sub-entries for %s", skipped_future, username)
 
     result["unattended_count"] = len(unattended)
 

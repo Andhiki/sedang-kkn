@@ -1,16 +1,14 @@
-name: Proker Presensi (Time-Aware)
+name: Proker Presensi (Today)
 
 on:
   schedule:
-    # 22:00 WIB = 15:00 UTC
-    - cron: "0 15 * * *"
-    # 23:00 WIB = 16:00 UTC
-    - cron: "0 16 * * *"
+    # 08:00 WIB = 01:00 UTC
+    - cron: "0 1 * * *"
   workflow_dispatch:
 
 jobs:
-  proker-presensi-time-aware:
-    if: vars.PRESENSI_FILTER_MODE == 'time_aware' || vars.PRESENSI_FILTER_MODE == ''
+  proker-presensi-today:
+    if: vars.PRESENSI_FILTER_MODE == 'today'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -32,7 +30,7 @@ jobs:
         run: |
           printf '%s' "${{ vars.LOCATIONS_YAML }}" > locations.yaml
 
-      - name: Run proker presensi (time-aware mode)
+      - name: Run proker presensi (today mode)
         env:
           SIMASTER_USERNAME: ${{ secrets.SIMASTER_USERNAME }}
           SIMASTER_PASSWORD: ${{ secrets.SIMASTER_PASSWORD }}
@@ -46,14 +44,14 @@ jobs:
           THROTTLE: "true"
           SHUFFLE: "true"
           MAX_RETRIES: "3"
-          PRESENSI_FILTER_MODE: "time_aware"
+          PRESENSI_FILTER_MODE: "today"
         run: uv run python src/main.py --proker_presensi --headless
 
       - name: Upload proker reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kkn-proker-reports-time-aware
+          name: kkn-proker-reports-today
           path: reports/
           retention-days: 7
           if-no-files-found: warn
@@ -62,7 +60,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: kkn-proker-logs-time-aware
+          name: kkn-proker-logs-today
           path: logs/
           retention-days: 7
           if-no-files-found: warn
