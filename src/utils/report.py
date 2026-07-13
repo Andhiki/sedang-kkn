@@ -3,7 +3,6 @@ from datetime import datetime
 from pathlib import Path
 
 from ics import Calendar, Event
-from weasyprint import HTML as WeasyHTML
 
 from datatypes import AssistedProgram, RPPData
 from ui.tui import console, print_log
@@ -182,6 +181,8 @@ def generate_html(records: list[dict], narrative: str | None, out_path: Path, ti
 
 def generate_pdf(records: list[dict], narrative: str | None, out_path: Path, title_prefix: str = "") -> bool:
   try:
+    from weasyprint import HTML as WeasyHTML
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     html = _build_html(records, narrative, title_prefix=title_prefix)
     WeasyHTML(string=html).write_pdf(str(out_path))
