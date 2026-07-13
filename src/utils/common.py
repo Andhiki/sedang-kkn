@@ -1,12 +1,11 @@
 import asyncio
-import functools
-import getpass
 import math
 import os
 import random
 from asyncio import Task
 from typing import Callable
 
+from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import AnyFormattedText
 
 from ui.tui import console, prompt_session
@@ -16,10 +15,10 @@ async def async_input(prompt: str | AnyFormattedText = "", func: type | Callable
   is_password = kwargs.pop("is_password", False)
   try:
     if is_password:
-      loop = asyncio.get_event_loop()
-      result = await loop.run_in_executor(None, functools.partial(getpass.getpass, str(prompt)))
+      session = PromptSession()
     else:
-      result = await prompt_session.prompt_async(prompt, **kwargs)
+      session = prompt_session
+    result = await session.prompt_async(prompt, is_password=is_password, **kwargs)
     return func(result)
   except (KeyboardInterrupt, asyncio.CancelledError, EOFError):
     raise

@@ -64,12 +64,16 @@ def _sum_program_hours(data) -> float:
 
 
 def print_hours_summary(main_program: dict, assisted_program: dict | None):
+  main_loaded = bool(main_program)
+  assisted_loaded = bool(assisted_program)
   main_hours = _sum_program_hours(main_program or {})
   assisted_hours = _sum_program_hours(assisted_program or {})
+  main_display = _format_hours(main_hours) if main_loaded else "[#6c7086]~[/]"
+  assisted_display = _format_hours(assisted_hours) if assisted_loaded else "[#6c7086]~[/]"
   console.print(
     Panel(
-      f"[#89dceb]Proker Utama:[/] {_format_hours(main_hours)}    "
-      f"[#89dceb]Program Bantu:[/] {_format_hours(assisted_hours)}",
+      f"[#89dceb]Proker Utama:[/] {main_display}    "
+      f"[#89dceb]Program Bantu:[/] {assisted_display}",
       title="[bold #89dceb]Jam Tercatat[/]",
       expand=False,
     )
@@ -103,7 +107,7 @@ def print_title():
   print(random_quotes)
 
 
-def print_choice():
+def print_choice(username: str | None = None):
   options = [
     "Post Daily Attendance",
     "Show Programs",
@@ -113,8 +117,12 @@ def print_choice():
     "Generate Activity Timeline",
     "Change Account",
     "Refresh",
+    "Group Report (Jam Semua Anggota)",
     "Exit",
   ]
+
+  if username:
+    console.print(f"[#89dceb]Logged in as:[/] [bold #fab387]{username}[/]\n")
 
   opt_len = len(str(len(options)))
   for i, opt in enumerate(options, 1):

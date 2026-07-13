@@ -1,10 +1,9 @@
 import asyncio
-import getpass
 import os
 import sys
 
 from dotenv import load_dotenv
-from prompt_toolkit import HTML
+from prompt_toolkit import HTML, PromptSession
 from tap import Tap
 
 import actions
@@ -54,9 +53,9 @@ async def main_async(username: str, password: str):
 
     print_hours_summary(kkn_manager.main_program, kkn_manager.assisted_program)
 
-    print_choice()
+    print_choice(username)
     choice = await async_input(
-      HTML('Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>9</num>): </delim>')
+      HTML('Enter your choice <delim fg="#89dceb">(<num fg="#fab387">1<dash fg="#89dceb">-</dash>10</num>): </delim>')
     )
     print()
 
@@ -85,6 +84,11 @@ async def main_async(username: str, password: str):
         kkn_manager.start()
         console.print("[blue]Data refresh started in background...")
       elif choice == "9":
+        from utils.group_report import show_group_hours
+
+        console.print("[blue]Fetching jam proker for all credentials...")
+        await show_group_hours()
+      elif choice == "10":
         console.print("[yellow]Exiting...[/]")
         if kkn_manager.loader and not kkn_manager.loader.done():
           kkn_manager.loader.cancel()
@@ -117,7 +121,9 @@ def main() -> int:
     print_title()
 
   username = os.getenv("SIMASTER_USERNAME") or prompt_session.prompt(HTML('Username<delim fg="#89dceb">:</delim> '))
-  password = os.getenv("SIMASTER_PASSWORD") or getpass.getpass(str(HTML('Password<delim fg="#89dceb">:</delim> ')))
+  password = os.getenv("SIMASTER_PASSWORD") or PromptSession().prompt(
+    HTML('Password<delim fg="#89dceb">:</delim> '), is_password=True
+  )
 
   try:
     if args.submit:
