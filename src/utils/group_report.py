@@ -91,7 +91,7 @@ async def _process_single_user(username: str, password: str) -> dict:
       return result
 
     kkn = KKN(session, simaster, autostart=False)
-    await kkn._load_all(auth_provider=None)
+    await kkn._load_all(auth_provider=simaster)
 
     jam_utama = _sum_program_hours(kkn.main_program or {})
     jam_bantu = _sum_program_hours(kkn.assisted_program or {})
