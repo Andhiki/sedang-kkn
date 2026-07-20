@@ -206,17 +206,24 @@ def get_sub_entry_details_from_user(
 
   if use_ai:
     entry_title = sub_entry.get("title") if sub_entry else None
+    sub_entry_fields = {
+      "date": activity_datetime,
+      "duration": duration,
+      "target": target,
+      "audience": audience,
+      "budget": budget,
+    }
     while True:
-      desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title, entry_title=entry_title)
+      desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title, entry_title=entry_title, sub_entry_fields=sub_entry_fields)
       console.print(Panel(Markdown(desc_prompt), title="Current Prompt"))
       if Confirm.ask("Add additional context?", default=False):
         context = Prompt.ask("Enter additional context")
-        desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title, context, entry_title=entry_title)
+        desc_prompt = gen.generate_description_prompt(program_title, sub_entry_title, context, entry_title=entry_title, sub_entry_fields=sub_entry_fields)
 
       with console.status("[blue]Generating description...[/]"):
         generated_desc = gen.generate_content(desc_prompt)
 
-      result_prompt = gen.generate_result_prompt(program_title, sub_entry_title, generated_desc, entry_title=entry_title)
+      result_prompt = gen.generate_result_prompt(program_title, sub_entry_title, generated_desc, entry_title=entry_title, sub_entry_fields=sub_entry_fields)
       with console.status("[blue]Generating result...[/]"):
         generated_result = gen.generate_content(result_prompt)
       if len(generated_result) > 256:

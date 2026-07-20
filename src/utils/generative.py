@@ -41,6 +41,7 @@ def generate_content(prompt: str) -> str:
 
 def _generate_via_ollama(prompt: str) -> str:
   import httpx
+  import time
 
   base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com").rstrip("/")
   api_key = os.getenv("OLLAMA_API_KEY")
@@ -58,20 +59,34 @@ def _generate_via_ollama(prompt: str) -> str:
     "temperature": float(os.getenv("OLLAMA_TEMPERATURE", "0.7")),
   }
 
-  with httpx.Client(timeout=60.0, follow_redirects=True) as client:
-    resp = client.post(url, json=payload, headers=headers)
-    if resp.status_code == 301:
-      raise RuntimeError(f"Ollama base URL returned redirect. Check OLLAMA_BASE_URL in .env. Current: {base_url or '(empty)'}. For local Ollama use http://localhost:11434")
-    resp.raise_for_status()
-    data = resp.json()
+  timeout = float(os.getenv("OLLAMA_TIMEOUT", "300.0"))
+  max_retries = int(os.getenv("OLLAMA_MAX_RETRIES", "3"))
+  last_exc: Exception | None = None
 
-  choices = data.get("choices", [])
-  if choices:
-    content = choices[0].get("message", {}).get("content", "")
-  else:
-    content = data.get("message", {}).get("content", "")
+  for attempt in range(1, max_retries + 1):
+    try:
+      with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        resp = client.post(url, json=payload, headers=headers)
+        if resp.status_code == 301:
+          raise RuntimeError(f"Ollama base URL returned redirect. Check OLLAMA_BASE_URL in .env. Current: {base_url or '(empty)'}. For local Ollama use http://localhost:11434")
+        resp.raise_for_status()
+        data = resp.json()
 
-  return (content or "").strip()
+      choices = data.get("choices", [])
+      if choices:
+        content = choices[0].get("message", {}).get("content", "")
+      else:
+        content = data.get("message", {}).get("content", "")
+
+      return (content or "").strip()
+    except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.NetworkError) as e:
+      last_exc = e
+      print_log(f"Ollama timeout/network attempt {attempt}/{max_retries}: {e}", "ERROR")
+      if attempt < max_retries:
+        time.sleep(2 * attempt)
+      continue
+
+  raise RuntimeError(f"Ollama request failed after {max_retries} retries: {last_exc}")
 
 
 def _generate_via_gemini(prompt: str) -> str:
@@ -88,11 +103,25 @@ def generate_description_prompt(
   activity_title: str,
   additional_context: str | None = None,
   entry_title: str | None = None,
+  sub_entry_fields: dict | None = None,
 ) -> str:
   context_lines = f"- **Judul Program Kerja (Proker) Utama:** {program_title}\n"
   if entry_title:
     context_lines += f"- **Judul Tahapan (Entry):** {entry_title}\n"
   context_lines += f"- **Judul Sub-Tahapan (Sub-Kegiatan yang sedang diisi):** {activity_title}\n"
+  if sub_entry_fields:
+    context_lines += "- **Isian sub-tahapan yang sedang diisi (data faktual, wajib akurat dan konsisten dengan isian):**\n"
+    field_labels = {
+      "date": "Tanggal pelaksanaan",
+      "duration": "Durasi (menit)",
+      "target": "Sasaran/Target audience",
+      "audience": "Jumlah peserta",
+      "budget": "Jumlah dana",
+    }
+    for key, label in field_labels.items():
+      val = sub_entry_fields.get(key)
+      if val not in (None, "", "-", "0", 0):
+        context_lines += f"  - {label}: {val}\n"
 
   focus = (
     f"3. **Fokus utama adalah sub-tahapan '{activity_title}'.** "
@@ -100,6 +129,13 @@ def generate_description_prompt(
     f"bukan deskripsi umum tentang proker atau tahapan. "
     f"Gunakan judul sub-tahapan sebagai panduan isi kegiatan.\n"
   ) if activity_title else ""
+
+  consistency = (
+    f"5. **Konsistensi dengan isian sub-tahapan wajib.** Gunakan data isian "
+    f"(tanggal, durasi, sasaran, jumlah peserta, jumlah dana) sebagai fakta yang harus "
+    f"tercermin dalam deskripsi. Jangan ubah, tambah, atau hilangkan angka/fakta dari isian. "
+    f"Sebutkan sasaran dan jumlah peserta bila relevan dengan alur deskripsi.\n"
+  ) if sub_entry_fields else ""
 
   return (
     f"Anda adalah seorang mahasiswa KKN UGM yang sedang mengisi logbook SIMASTER.\n"
@@ -115,7 +151,8 @@ def generate_description_prompt(
     f"4. Panjang deskripsi 300-500 karakter. Jangan kurang dari 300, jangan lebih dari 500. "
     f"Isian dapat meliputi keterlibatan warga, tantangan yang dihadapi, bantuan dari pemerintah desa, "
     f"kesesuaian dengan program desa, metodologi pendekatan, dan tanggapan masyarakat bila relevan. "
-    f"Jangan gunakan formatting, hanya respons dengan deskripsi kegiatan.\n\n"
+    f"Jangan gunakan formatting, hanya respons dengan deskripsi kegiatan.\n"
+    f"{consistency}\n"
     f"**Contoh Output:**\n"
     f"Kegiatan '{activity_title}' dilaksanakan sebagai bagian dari "
     f"{f"tahapan '{entry_title}' dalam " if entry_title else ""}program kerja '{program_title}'. "
@@ -131,11 +168,25 @@ def generate_result_prompt(
   kegiatan_title: str,
   description: str,
   entry_title: str | None = None,
+  sub_entry_fields: dict | None = None,
 ) -> str:
   context_lines = f"- **Judul Program Kerja (Proker) Utama:** {proker_title}\n"
   if entry_title:
     context_lines += f"- **Judul Tahapan (Entry):** {entry_title}\n"
   context_lines += f"- **Judul Sub-Tahapan (Sub-Kegiatan):** {kegiatan_title}\n"
+  if sub_entry_fields:
+    context_lines += "- **Isian sub-tahapan (fakta, harus konsisten):**\n"
+    field_labels = {
+      "date": "Tanggal pelaksanaan",
+      "duration": "Durasi (menit)",
+      "target": "Sasaran/Target audience",
+      "audience": "Jumlah peserta",
+      "budget": "Jumlah dana",
+    }
+    for key, label in field_labels.items():
+      val = sub_entry_fields.get(key)
+      if val not in (None, "", "-", "0", 0):
+        context_lines += f"  - {label}: {val}\n"
 
   return (
     f"Anda adalah seorang mahasiswa KKN UGM yang sedang mengisi logbook SIMASTER.\n"
@@ -149,7 +200,9 @@ def generate_result_prompt(
     f"3. **Hasil harus spesifik terkait sub-tahapan '{kegiatan_title}'** — sebutkan output konkret "
     f"yang relevan dengan judul sub-tahapan, bukan hasil generik.\n"
     f"4. Buat hasil kegiatan dalam 1-2 kalimat saja. Maksimal 200 karakter. "
-    f"Jangan gunakan formatting, hanya respons dengan hasil kegiatan saja.\n\n"
+    f"Jangan gunakan formatting, hanya respons dengan hasil kegiatan saja.\n"
+    f"5. Konsisten dengan isian sub-tahapan (sasaran, jumlah peserta, dll). "
+    f"Jangan ubah angka/fakta dari isian.\n\n"
     f"**Contoh Output:**\n"
     f"Sub-tahapan '{kegiatan_title}' telah berhasil dilaksanakan dengan lancar. "
     f"Hasil yang dicapai adalah [sebutkan hasil konkret spesifik sesuai judul sub-tahapan], "

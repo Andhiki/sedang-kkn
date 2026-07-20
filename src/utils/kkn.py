@@ -158,9 +158,23 @@ class KKN:
 
     temp_pool = []
     if auth_provider:
-      login_task = [auth_provider.login(reuse_session=False) for _ in range(pool_size)]
-      temp_pool = await asyncio.gather(*login_task)
-      temp_pool = [c for c in temp_pool if c is not None]
+      cached_client = await auth_provider.login(reuse_session=True)
+      if cached_client is None:
+        cached_client = await auth_provider.login(reuse_session=False)
+      if cached_client is None:
+        temp_pool = []
+      else:
+        temp_pool = [cached_client]
+        for i in range(1, pool_size):
+          await asyncio.sleep(0.4 * i)
+          c = await auth_provider.login(reuse_session=False)
+          if c is not None:
+            temp_pool.append(c)
+        if len(temp_pool) < 2:
+          extra = await auth_provider.login(reuse_session=False)
+          if extra is not None:
+            temp_pool.append(extra)
+        temp_pool = temp_pool[:pool_size]
 
     active_clients = temp_pool if temp_pool else [self.client]
     client_cycle = itertools.cycle(active_clients)

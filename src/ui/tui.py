@@ -49,7 +49,7 @@ def _format_hours(total: float) -> str:
   return f"{minutes} menit"
 
 
-def _sum_program_hours(data) -> float:
+def _sum_program_hours(data, attended_only: bool = False) -> float:
   total = 0.0
   if not data:
     return total
@@ -59,6 +59,8 @@ def _sum_program_hours(data) -> float:
       continue
     for entry in entries:
       for sub in entry.get("sub_entries", []) or []:
+        if attended_only and not sub.get("is_attended"):
+          continue
         total += _parse_duration_hours(sub.get("duration", "N/A"))
   return total
 
