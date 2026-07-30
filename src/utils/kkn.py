@@ -1,18 +1,22 @@
 import asyncio
 import itertools
 import json
+import os
 import re
 from asyncio.tasks import Task
 
 import httpx
 from selectolax.parser import HTMLParser
 
-from datatypes import AssistedProgram, EntryData, LogEntryPayload, RPPData, SubEntryData
+from datatypes import AnggotaData, AssistedProgram, EntryData, LogEntryPayload, RPPData, SubEntryData
 from ui.tui import print_log
 from utils.simaster import BASE_URL, Simaster
 
 KKN_MAIN_URL = f"{BASE_URL}/kkn/kkn"
 KKN_ATTENDANCE_URL = f"{KKN_MAIN_URL}/logbook_kegiatan_presensi"
+
+KKN_FETCH_RETRIES = int(os.getenv("KKN_FETCH_RETRIES", "3"))
+KKN_FETCH_BACKOFF = float(os.getenv("KKN_FETCH_BACKOFF", "1.5"))
 
 DATA_URL_PATTERN = re.compile(r"'url'\s*:\s*[\"'](https://simaster\.ugm\.ac\.id/kkn/kkn/logbook_program_data/[^\"']+)")
 LOGBOOK_LINK_PATTERN = re.compile(
@@ -42,7 +46,7 @@ class KKN:
     if self.loader is None or self.loader.done():
       self.loader = asyncio.create_task(self._load_all(self.simaster_account))
 
-  async def _load_all(self, auth_provider: Simaster | None = None):
+  async def _load_all(self, auth_provider: Simaster | None = None, pool_size: int = 6):
     result = await self._get_kkn_program()
     if result is None:
       self.main_program = {}
@@ -53,94 +57,113 @@ class KKN:
     self.main_program = result
     self.load_error = None
     p_id = next(iter(self.main_program)) if self.main_program else ""
-    pool_size = len(self.main_program) + 1
+    use_pool_size = pool_size if pool_size else len(self.main_program) + 1
 
     tasks = []
-    tasks.append(self._get_logbook_entries(auth_provider, pool_size=pool_size))
+    tasks.append(self._get_logbook_entries(auth_provider, pool_size=use_pool_size))
     tasks.append(self._get_assisted_program(p_id))
 
     results = await asyncio.gather(*tasks)
     self.assisted_program = results[1]
 
   async def _get_kkn_program(self) -> dict[str, RPPData] | None:
-    try:
-      resp = await self.client.get(KKN_MAIN_URL, follow_redirects=True)
-      resp.raise_for_status()
+    last_exc: Exception | None = None
+    for attempt in range(1, KKN_FETCH_RETRIES + 1):
+      try:
+        resp = await self.client.get(KKN_MAIN_URL, follow_redirects=True)
+        resp.raise_for_status()
 
-      if not (match := LOGBOOK_LINK_PATTERN.search(resp.text)):
-        print_log("Couldn't find 'Pelaksanaan Program' link on the KKN main page")
+        if not (match := LOGBOOK_LINK_PATTERN.search(resp.text)):
+          print_log("Couldn't find 'Pelaksanaan Program' link on the KKN main page")
+          return None
+
+        logbook_url: str = match.group(1)
+        if not logbook_url.startswith("http"):
+          logbook_url = f"{BASE_URL}{logbook_url.lstrip('/')}"
+
+        resp = await self.client.get(logbook_url, follow_redirects=True)
+        resp.raise_for_status()
+
+        # httpx.Cookies.get() raises CookieConflict if multiple cookies share the
+        # same name across domains. Iterate the jar manually to pick the one
+        # for simaster.ugm.ac.id.
+        cookie = None
+        for c in self.client.cookies.jar:
+          if c.name == "simasterUGM_cookie" and "simaster.ugm.ac.id" in (c.domain or ""):
+            cookie = c.value
+            break
+        if not cookie:
+          print_log("Could not find 'simasterUGM_cookie' in the session after visiting the logbook page.")
+          return None
+
+        if not (match := DATA_URL_PATTERN.search(resp.text)):
+          print_log("Could not find data URL in logbook page's JavaScript.")
+          return None
+
+        data_url = match.group(1)
+
+        headers = {"X-Requested-With": "XMLHttpRequest"}
+        # fmt: off
+        post_data = {
+          "draw": "1", "start": "0", "length": "25", "search[value]": "", "search[regex]": "false", "dt": "{}", "simasterUGM_token": cookie,
+          "columns[0][data]": "no",                        "columns[0][name]": "", "columns[0][searchable]": "false", "columns[0][orderable]": "false", "columns[0][search][value]": "", "columns[0][search][regex]": "false",
+          "columns[1][data]": "program_nama",              "columns[1][name]": "", "columns[1][searchable]": "true",  "columns[1][orderable]": "true",  "columns[1][search][value]": "", "columns[1][search][regex]": "false",
+          "columns[2][data]": "program_mhs_judul",         "columns[2][name]": "", "columns[2][searchable]": "true",  "columns[2][orderable]": "true",  "columns[2][search][value]": "", "columns[2][search][regex]": "false",
+          "columns[3][data]": "program_jenis_id",          "columns[3][name]": "", "columns[3][searchable]": "true",  "columns[3][orderable]": "true",  "columns[3][search][value]": "", "columns[3][search][regex]": "false",
+          "columns[4][data]": "program_mhs_keberlanjutan", "columns[4][name]": "", "columns[4][searchable]": "true",  "columns[4][orderable]": "true",  "columns[4][search][value]": "", "columns[4][search][regex]": "false",
+          "columns[5][data]": "status_nama",               "columns[5][name]": "", "columns[5][searchable]": "true",  "columns[5][orderable]": "true",  "columns[5][search][value]": "", "columns[5][search][regex]": "false",
+          "columns[6][data]": "action",                    "columns[6][name]": "", "columns[6][searchable]": "false", "columns[6][orderable]": "false", "columns[6][search][value]": "", "columns[6][search][regex]": "false",
+        }
+        # fmt: on
+
+        resp = await self.client.post(data_url, data=post_data, headers=headers, follow_redirects=True)
+        resp.raise_for_status()
+
+        programs = resp.json()
+
+        if new_token := programs.get("csrf_value"):
+          self.client.cookies.set("simasterUGM_cookie", new_token, "simaster.ugm.ac.id")
+
+        programs_list = programs.get("data", [])
+
+        data: dict[str, RPPData] = {}
+        for p in programs_list:
+          p_id = p.get("program_mhs_id", "")
+          title = p.get("program_mhs_judul", "")
+
+          if action_match := RPP_LINK_PATTERN.search(p.get("action", "")):
+            data[p_id]: RPPData = {"title": title, "action": action_match.group(1)}
+          else:
+            print_log(f"Could not find RPP URL for program {p_id}")
+
+        return data
+
+      except httpx.HTTPStatusError as e:
+        code = e.response.status_code
+        if code >= 500 and attempt < KKN_FETCH_RETRIES:
+          delay = KKN_FETCH_BACKOFF ** attempt
+          print_log(f"_get_kkn_program HTTP {code} (attempt {attempt}/{KKN_FETCH_RETRIES}), retrying in {delay:.1f}s", "WARN")
+          last_exc = e
+          await asyncio.sleep(delay)
+          continue
+        print_log(f"HTTP error occurred: {code} - {e}", "ERROR")
+        return None
+      except httpx.RequestError as e:
+        if attempt < KKN_FETCH_RETRIES:
+          delay = KKN_FETCH_BACKOFF ** attempt
+          print_log(f"_get_kkn_program {type(e).__name__} (attempt {attempt}/{KKN_FETCH_RETRIES}), retrying in {delay:.1f}s", "WARN")
+          last_exc = e
+          await asyncio.sleep(delay)
+          continue
+        print_log(f"An error occurred when fetching programs: {repr(e)}", "ERROR")
+        return None
+      except Exception as e:
+        print_log(f"An unexpected error occurred in _get_kkn_program: {e}", "ERROR")
         return None
 
-      logbook_url: str = match.group(1)
-      if not logbook_url.startswith("http"):
-        logbook_url = f"{BASE_URL}{logbook_url.lstrip('/')}"
-
-      resp = await self.client.get(logbook_url, follow_redirects=True)
-      resp.raise_for_status()
-
-      # httpx.Cookies.get() raises CookieConflict if multiple cookies share the
-      # same name across domains. Iterate the jar manually to pick the one
-      # for simaster.ugm.ac.id.
-      cookie = None
-      for c in self.client.cookies.jar:
-        if c.name == "simasterUGM_cookie" and "simaster.ugm.ac.id" in (c.domain or ""):
-          cookie = c.value
-          break
-      if not cookie:
-        print_log("Could not find 'simasterUGM_cookie' in the session after visiting the logbook page.")
-        return None
-
-      if not (match := DATA_URL_PATTERN.search(resp.text)):
-        print_log("Could not find data URL in logbook page's JavaScript.")
-        return None
-
-      data_url = match.group(1)
-
-      headers = {"X-Requested-With": "XMLHttpRequest"}
-      # fmt: off
-      post_data = {
-        "draw": "1", "start": "0", "length": "25", "search[value]": "", "search[regex]": "false", "dt": "{}", "simasterUGM_token": cookie,
-        "columns[0][data]": "no",                        "columns[0][name]": "", "columns[0][searchable]": "false", "columns[0][orderable]": "false", "columns[0][search][value]": "", "columns[0][search][regex]": "false",
-        "columns[1][data]": "program_nama",              "columns[1][name]": "", "columns[1][searchable]": "true",  "columns[1][orderable]": "true",  "columns[1][search][value]": "", "columns[1][search][regex]": "false",
-        "columns[2][data]": "program_mhs_judul",         "columns[2][name]": "", "columns[2][searchable]": "true",  "columns[2][orderable]": "true",  "columns[2][search][value]": "", "columns[2][search][regex]": "false",
-        "columns[3][data]": "program_jenis_id",          "columns[3][name]": "", "columns[3][searchable]": "true",  "columns[3][orderable]": "true",  "columns[3][search][value]": "", "columns[3][search][regex]": "false",
-        "columns[4][data]": "program_mhs_keberlanjutan", "columns[4][name]": "", "columns[4][searchable]": "true",  "columns[4][orderable]": "true",  "columns[4][search][value]": "", "columns[4][search][regex]": "false",
-        "columns[5][data]": "status_nama",               "columns[5][name]": "", "columns[5][searchable]": "true",  "columns[5][orderable]": "true",  "columns[5][search][value]": "", "columns[5][search][regex]": "false",
-        "columns[6][data]": "action",                    "columns[6][name]": "", "columns[6][searchable]": "false", "columns[6][orderable]": "false", "columns[6][search][value]": "", "columns[6][search][regex]": "false",
-      }
-      # fmt: on
-
-      resp = await self.client.post(data_url, data=post_data, headers=headers, follow_redirects=True)
-      resp.raise_for_status()
-
-      programs = resp.json()
-
-      if new_token := programs.get("csrf_value"):
-        self.client.cookies.set("simasterUGM_cookie", new_token, "simaster.ugm.ac.id")
-
-      programs_list = programs.get("data", [])
-
-      data: dict[str, RPPData] = {}
-      for p in programs_list:
-        p_id = p.get("program_mhs_id", "")
-        title = p.get("program_mhs_judul", "")
-
-        if action_match := RPP_LINK_PATTERN.search(p.get("action", "")):
-          data[p_id]: RPPData = {"title": title, "action": action_match.group(1)}
-        else:
-          print_log(f"Could not find RPP URL for program {p_id}")
-
-      return data
-
-    except httpx.HTTPStatusError as e:
-      print_log(f"HTTP error occurred: {e.response.status_code} - {e}", "ERROR")
-      return None
-    except httpx.RequestError as e:
-      print_log(f"An error occurred when fetching programs: {repr(e)}", "ERROR")
-      return None
-    except Exception as e:
-      print_log(f"An unexpected error occurred in _get_kkn_program: {e}", "ERROR")
-      return None
+    if last_exc:
+      print_log(f"_get_kkn_program exhausted {KKN_FETCH_RETRIES} retries: {repr(last_exc)}", "ERROR")
+    return None
 
   # HACK:
   # - SIMASTER Seems to have some sort of server-side lock when we send them a GET request to fetch the
@@ -387,6 +410,94 @@ class KKN:
       print_log(f"An unexpected error occurred in get_assisted_program: {e}", "ERROR")
       return None
 
+  async def get_logbook_anggota(
+    self,
+    program_id: str,
+    edit_url: str | None = None,
+  ) -> tuple[list[AnggotaData], list[str]] | None:
+    """Fetch anggota list for a program's entry form.
+
+    Returns (all_anggota, selected_mhs_ids).
+    `all_anggota` is every option in the anggotaUnit select.
+    `selected_mhs_ids` is the pre-selected values in edit mode (empty when adding).
+    """
+    if not self.main_program or not (target := self.main_program.get(program_id)):
+      return None
+
+    try:
+      if edit_url:
+        resp = await self.client.get(edit_url, follow_redirects=True)
+      else:
+        resp = await self.client.get(target["action"], follow_redirects=True)
+        resp.raise_for_status()
+        tree = HTMLParser(resp.content)
+        if not (add_link_node := tree.css_first("a[title='Tambah']")):
+          print_log("Could not find 'Tambah' link on the RPP page.", "ERROR")
+          return None
+        add_page_url = add_link_node.attributes.get("href")
+        if not add_page_url:
+          return None
+        if not add_page_url.startswith("http"):
+          add_page_url = f"{BASE_URL}/{add_page_url.lstrip('/')}"
+        resp = await self.client.get(add_page_url, follow_redirects=True)
+
+      resp.raise_for_status()
+      tree = HTMLParser(resp.content)
+
+      if not (form := tree.css_first("form#form-usulan-program")):
+        print_log("Could not find the form to parse anggota.", "ERROR")
+        return None
+
+      if not (sel := form.css_first("select.anggotaUnit, select[name='dParam[anggotaUnit][]']")):
+        print_log("Could not find anggotaUnit select on the form.", "WARN")
+        return [], []
+
+      anggota: list[AnggotaData] = []
+      selected: list[str] = []
+
+      for group in sel.css("optgroup"):
+        kelompok = group.attributes.get("label", "") or ""
+        for opt in group.css("option"):
+          value = opt.attributes.get("value", "") or ""
+          text = opt.text(strip=True)
+          selected_flag = opt.attributes.get("selected") is not None
+          nim = ""
+          name = text
+          if "(" in text and text.endswith(")"):
+            idx = text.rfind("(")
+            name = text[:idx].strip()
+            nim = text[idx + 1 : -1].strip()
+          if value:
+            anggota.append({"mhs_id": value, "name": name, "nim": nim, "kelompok": kelompok})
+            if selected_flag:
+              selected.append(value)
+
+      # Fallback: options directly under select (no optgroup)
+      if not anggota:
+        for opt in sel.css("option"):
+          value = opt.attributes.get("value", "") or ""
+          text = opt.text(strip=True)
+          selected_flag = opt.attributes.get("selected") is not None
+          nim = ""
+          name = text
+          if "(" in text and text.endswith(")"):
+            idx = text.rfind("(")
+            name = text[:idx].strip()
+            nim = text[idx + 1 : -1].strip()
+          if value:
+            anggota.append({"mhs_id": value, "name": name, "nim": nim, "kelompok": ""})
+            if selected_flag:
+              selected.append(value)
+
+      return anggota, selected
+
+    except httpx.RequestError as e:
+      print_log(f"Network error fetching anggota: {repr(e)}", "ERROR")
+      return None
+    except Exception as e:
+      print_log(f"Unexpected error in get_logbook_anggota: {e}", "ERROR")
+      return None
+
   async def add_logbook_entry(self, program_id: str, data: LogEntryPayload, edit_url: str | None = None):
     if not self.main_program or not (target := self.main_program.get(program_id)):
       return None
@@ -432,6 +543,9 @@ class KKN:
       form_data["dParam[judul]"] = data["title"]
       form_data["dParam[pelaksanaan]"] = data["date"]
       form_data["dParam[lokasi]"] = f"{data['latitude']}, {data['longitude']}"
+
+      anggota_ids = data.get("anggota") or []
+      form_data["dParam[anggotaUnit][]"] = anggota_ids
 
       assert action_url is not None
       resp = await self.client.post(action_url, data=form_data, follow_redirects=True)

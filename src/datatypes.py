@@ -51,6 +51,7 @@ class CheckInPayload(_BasePayload):
 class LogEntryPayload(BasePayload):
   title: str
   date: str
+  anggota: list[str]
 
 
 class SubEntryData(TypedDict, total=False):
@@ -86,3 +87,10 @@ class AssistedProgram(TypedDict, total=False):
   date: str
   location: str
   sub_entries: list[SubEntryData]
+
+
+class AnggotaData(TypedDict):
+  mhs_id: str
+  name: str
+  nim: str
+  kelompok: str

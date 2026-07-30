@@ -16,8 +16,10 @@ async def async_input(prompt: str | AnyFormattedText = "", func: type | Callable
   try:
     if is_password:
       session = PromptSession()
-    else:
+    elif prompt_session is not None:
       session = prompt_session
+    else:
+      session = PromptSession()
     result = await session.prompt_async(prompt, is_password=is_password, **kwargs)
     return func(result)
   except (KeyboardInterrupt, asyncio.CancelledError, EOFError):

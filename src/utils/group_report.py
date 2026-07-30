@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from datetime import datetime
@@ -14,6 +15,8 @@ from utils.simaster import Simaster
 log = get_logger("group_report")
 
 REPORT_DIR = Path(os.getenv("REPORT_DIR", "reports"))
+
+GROUP_CONCURRENCY = int(os.getenv("GROUP_CONCURRENCY", "4"))
 
 
 def _build_group_summary_html(user_summaries: list[dict]) -> str:
@@ -99,7 +102,7 @@ async def _process_single_user(username: str, password: str) -> dict:
       return result
 
     kkn = KKN(session, simaster, autostart=False)
-    await kkn._load_all(auth_provider=simaster)
+    await kkn._load_all(auth_provider=simaster, pool_size=1)
 
     utama_all = _sum_program_hours(kkn.main_program or {})
     utama_sudah = _sum_program_hours(kkn.main_program or {}, attended_only=True)
@@ -133,13 +136,17 @@ async def show_group_hours() -> bool:
     print_log("No credentials found — set SIMASTER_CREDENTIALS or credentials.json", "ERROR")
     return False
 
-  log.info("Fetching hours for %d users", len(creds))
+  log.info("Fetching hours for %d users (concurrency=%d)", len(creds), GROUP_CONCURRENCY)
 
-  summaries = []
-  for username, password in creds.items():
-    print(f"Fetching {username}...")
-    summary = await _process_single_user(username, password)
-    summaries.append(summary)
+  sem = asyncio.Semaphore(GROUP_CONCURRENCY)
+
+  async def _bounded(u, p):
+    async with sem:
+      print(f"Fetching {u}...")
+      return await _process_single_user(u, p)
+
+  tasks = [_bounded(u, p) for u, p in creds.items()]
+  summaries = await asyncio.gather(*tasks)
 
   table = Table(box=None, title="Jam Proker Semua Anggota")
   table.add_column("User")
@@ -147,31 +154,44 @@ async def show_group_hours() -> bool:
   table.add_column("Jam Utama (Belum)", justify="right")
   table.add_column("Jam Bantu (Sudah)", justify="right")
   table.add_column("Jam Bantu (Belum)", justify="right")
-  table.add_column("Total (Sudah)", justify="right", style="bold #a6e3a1")
-  table.add_column("Total (Belum)", justify="right", style="bold #f38ba8")
+  table.add_column("Total Jam Utama", justify="right", style="bold #f9e2af")
+  table.add_column("Total Jam Bantu", justify="right", style="bold #f9e2af")
+  table.add_column("Total", justify="right", style="bold #a6e3a1")
   table.add_column("Status")
   for s in summaries:
+    total_utama = s.get("jam_utama_sudah", 0) + s.get("jam_utama_belum", 0)
+    total_bantu = s.get("jam_bantu_sudah", 0) + s.get("jam_bantu_belum", 0)
+    jam_total = total_utama + total_bantu
     table.add_row(
       s["username"],
       f"{s.get('jam_utama_sudah', 0):.1f}",
       f"{s.get('jam_utama_belum', 0):.1f}",
       f"{s.get('jam_bantu_sudah', 0):.1f}",
       f"{s.get('jam_bantu_belum', 0):.1f}",
-      f"{s.get('jam_total_sudah', 0):.1f}",
-      f"{s.get('jam_total_belum', 0):.1f}",
+      f"{total_utama:.1f}",
+      f"{total_bantu:.1f}",
+      f"{jam_total:.1f}",
       s["status"],
     )
 
   ok = [s for s in summaries if s["status"] == "ok"]
+  sum_utama_sudah = sum(s.get("jam_utama_sudah", 0) for s in ok)
+  sum_utama_belum = sum(s.get("jam_utama_belum", 0) for s in ok)
+  sum_bantu_sudah = sum(s.get("jam_bantu_sudah", 0) for s in ok)
+  sum_bantu_belum = sum(s.get("jam_bantu_belum", 0) for s in ok)
+  total_utama_all = sum_utama_sudah + sum_utama_belum
+  total_bantu_all = sum_bantu_sudah + sum_bantu_belum
+  total_all = total_utama_all + total_bantu_all
   table.add_section()
   table.add_row(
     "[bold]TOTAL[/]",
-    f"[bold]{sum(s.get('jam_utama_sudah', 0) for s in ok):.1f}[/]",
-    f"[bold]{sum(s.get('jam_utama_belum', 0) for s in ok):.1f}[/]",
-    f"[bold]{sum(s.get('jam_bantu_sudah', 0) for s in ok):.1f}[/]",
-    f"[bold]{sum(s.get('jam_bantu_belum', 0) for s in ok):.1f}[/]",
-    f"[bold]{sum(s.get('jam_total_sudah', 0) for s in ok):.1f}[/]",
-    f"[bold]{sum(s.get('jam_total_belum', 0) for s in ok):.1f}[/]",
+    f"[bold]{sum_utama_sudah:.1f}[/]",
+    f"[bold]{sum_utama_belum:.1f}[/]",
+    f"[bold]{sum_bantu_sudah:.1f}[/]",
+    f"[bold]{sum_bantu_belum:.1f}[/]",
+    f"[bold]{total_utama_all:.1f}[/]",
+    f"[bold]{total_bantu_all:.1f}[/]",
+    f"[bold]{total_all:.1f}[/]",
     "",
   )
 
@@ -197,10 +217,15 @@ async def generate_group_reports() -> bool:
   log.info("Starting group report for %d users", len(creds))
 
   summaries = []
-  for username, password in creds.items():
-    print(f"Processing {username}...")
-    summary = await _process_single_user(username, password)
-    summaries.append(summary)
+  sem = asyncio.Semaphore(GROUP_CONCURRENCY)
+
+  async def _bounded(u, p):
+    async with sem:
+      print(f"Processing {u}...")
+      return await _process_single_user(u, p)
+
+  tasks = [_bounded(u, p) for u, p in creds.items()]
+  summaries = await asyncio.gather(*tasks)
 
   # Group summary PDF
   group_dir = REPORT_DIR / "group-summary"

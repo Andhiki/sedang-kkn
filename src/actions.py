@@ -3,14 +3,12 @@ import os
 
 import httpx
 from prompt_toolkit import HTML
+from rich import box
 from rich.prompt import Prompt
+from rich.table import Table
 
-from datatypes import EntryData
 from ui.prompt import get_entry_details_from_user, get_sub_entry_details_from_user, parse_selection
 from ui.tables import print_assisted_program, print_program_details, print_program_title, print_unattended_program
-from rich.table import Table
-from rich import box
-
 from ui.tui import console, print_log
 from utils.common import async_input, generate_random_points, load_background
 from utils.kkn import KKN
@@ -129,10 +127,21 @@ async def manage_entry(kkn: KKN):
   else:
     edit_url = None
 
-  data = get_entry_details_from_user(
+  with console.status("[blue]Fetching anggota list...[/]", spinner="dots"):
+    anggota_result = await kkn.get_logbook_anggota(p_id, edit_url=edit_url)
+
+  if anggota_result is None:
+    print_log("Failed to fetch anggota list. Continuing without anggota selection.", "WARN")
+    anggota_list, pre_selected = [], []
+  else:
+    anggota_list, pre_selected = anggota_result
+
+  data = await get_entry_details_from_user(
     kkn.main_program[p_id],
     edit_mode=(mode == "e"),
     existing=selected_entry,
+    anggota=anggota_list,
+    pre_selected_anggota=pre_selected,
   )
   if data:
     await kkn.add_logbook_entry(p_id, data, edit_url=edit_url)
