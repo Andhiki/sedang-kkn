@@ -59,12 +59,12 @@ class KKN:
     p_id = next(iter(self.main_program)) if self.main_program else ""
     use_pool_size = pool_size if pool_size else len(self.main_program) + 1
 
-    tasks = []
-    tasks.append(self._get_logbook_entries(auth_provider, pool_size=use_pool_size))
-    tasks.append(self._get_assisted_program(p_id))
-
-    results = await asyncio.gather(*tasks)
-    self.assisted_program = results[1]
+    # Fetch main-program logbook entries first, then assisted. Running them
+    # concurrently against the same SIMASTER session causes per-account locks
+    # and can silently return empty/None entries.
+    await self._get_logbook_entries(auth_provider, pool_size=use_pool_size)
+    if self.main_program and not self.load_error:
+      self.assisted_program = await self._get_assisted_program(p_id) or {}
 
   async def _get_kkn_program(self) -> dict[str, RPPData] | None:
     last_exc: Exception | None = None
@@ -210,11 +210,28 @@ class KKN:
 
     results = await asyncio.gather(*tasks)
 
+    # Retry any programs that failed/returned None once before giving up.
+    retry_pids = []
+    retry_tasks = []
+    for p_id, entries in zip(program_list, results):
+      if entries is None:
+        retry_pids.append(p_id)
+        worker = next(client_cycle)
+        retry_tasks.append(self.get_logbook_entries_by_id(p_id, worker))
+      else:
+        self.main_program[p_id]["entries"] = entries
+
+    if retry_tasks:
+      print_log(f"Retrying logbook entries for {len(retry_tasks)} program(s)", "WARN")
+      await asyncio.sleep(KKN_FETCH_BACKOFF)
+      retry_results = await asyncio.gather(*retry_tasks)
+      for p_id, entries in zip(retry_pids, retry_results):
+        self.main_program[p_id]["entries"] = entries or []
+        if entries is None:
+          self.load_error = f"failed to fetch logbook entries for program {p_id}"
+
     if temp_pool:
       await asyncio.gather(*[c.aclose() for c in temp_pool])
-
-    for p_id, entries in zip(program_list, results):
-      self.main_program[p_id]["entries"] = entries
 
   async def update_logbook_entries(
     self,
@@ -223,19 +240,13 @@ class KKN:
     pool_size: int = 6,
     update_assisted: bool = False,
   ):
-    tasks = []
-    tasks.append(self._get_logbook_entries(auth_provider, programs=programs, pool_size=pool_size))
+    await self._get_logbook_entries(auth_provider, programs=programs, pool_size=pool_size)
     if update_assisted:
       if not (p_id := programs[-1] if programs else (next(iter(self.main_program)) if self.main_program else "")):
         print_log("update_logbook_entries: No Programs Found!", "ERROR")
         return
 
-      tasks.append(self._get_assisted_program(p_id))
-
-    results = await asyncio.gather(*tasks)
-
-    if update_assisted:
-      self.assisted_program = results[1]
+      self.assisted_program = await self._get_assisted_program(p_id) or {}
 
   async def get_logbook_entries_by_id(
     self, program_id: str, client: httpx.AsyncClient | None = None

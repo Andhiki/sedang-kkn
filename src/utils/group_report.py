@@ -104,6 +104,13 @@ async def _process_single_user(username: str, password: str) -> dict:
     kkn = KKN(session, simaster, autostart=False)
     await kkn._load_all(auth_provider=simaster, pool_size=1)
 
+    if kkn.load_error:
+      result["status"] = "error"
+      result["error"] = kkn.load_error
+      log.error("Load failed for %s: %s", username, kkn.load_error)
+      await session.aclose()
+      return result
+
     utama_all = _sum_program_hours(kkn.main_program or {})
     utama_sudah = _sum_program_hours(kkn.main_program or {}, attended_only=True)
     bantu_all = _sum_program_hours(kkn.assisted_program or {})
